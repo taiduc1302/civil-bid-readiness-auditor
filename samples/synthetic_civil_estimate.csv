@@ -1,0 +1,10 @@
+Description,Quantity,Unit,Rate,Amount,Category,Markup %,Margin %,Notes
+Mobilization,1,LS,25000,25000,General,10,9.09,Synthetic sample only
+Excavation - trench,1200,BCY,12.50,15000,Earthworks,10,10,Check margin mismatch
+Excavation - trench,1200,LF,12.50,15000,Earthworks,10,9.09,Conflicting unit
+Granular base,,TON,18.00,0,Materials,10,9.09,Missing quantity
+Traffic control,0,LS,0,0,General,10,9.09,Zero placeholder
+Credit for returned pipe,-5,EA,100,-500,Materials,10,9.09,Negative credit review
+Pipe supply,10,EA,50,500,Materials,10,9.09,=SUM(A1:A2)
+Pipe supply,10,EA,50,500,Materials,10,9.09,Duplicate synthetic line
+Unexpected total,2,HR,100,250,Labour,10,9.09,Extension mismatch

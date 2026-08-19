@@ -1,0 +1,8 @@
+{
+  "input": "synthetic_civil_estimate.csv",
+  "rows_reviewed": 9,
+  "score": 0,
+  "counts": {"Critical": 0, "High": 11, "Medium": 3, "Low": 1},
+  "rule_ids_in_order": ["R012", "R002", "R003", "R005", "R006", "R006", "R013", "R011", "R008", "R008", "R009", "R009", "R010", "R010", "R015"],
+  "note": "The sample intentionally contains faults so the UI and exports demonstrate a human-review queue. It does not represent a real estimate."
+}

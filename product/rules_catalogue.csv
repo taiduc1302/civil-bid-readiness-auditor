@@ -1,0 +1,18 @@
+rule_id,severity,condition,action,score_deduction,limitation
+R001,Critical,Description missing,Supply an item description and have reviewer confirm scope,20,Cannot establish scope completeness
+R002,High,Quantity blank or nonnumeric,Enter/verify quantity,10,Cannot determine correct quantity
+R003,High,Quantity equals zero,Confirm zero is intentional or correct it,10,Zero can be valid for a placeholder
+R004,High,Rate blank or nonnumeric,Enter/verify rate,10,Cannot determine correct price
+R005,High,Rate equals zero,Confirm zero rate is intentional or correct it,10,Zero can be valid for owner supply or allowance
+R006,High,Negative quantity or amount,Confirm credit/return treatment with reviewer,10,Negative values can be valid credits
+R007,Medium,Unit missing,Enter/verify unit,5,Does not infer unit
+R008,Medium,Exact duplicate item key,Confirm duplicate is intended or remove it,5,Repeated work can be legitimate
+R009,High,Same description has conflicting quantity/unit/rate,Confirm distinct scope and values,10,Does not decide which line is correct
+R010,High,Same description uses inconsistent units,Confirm scope segmentation and units,10,May be legitimate distinct work
+R011,High,Amount differs from quantity x rate by more than $0.01,Reconcile extension or rounding policy,10,Does not evaluate taxes/discounts/allowances
+R012,High,Markup and margin values conflict with conversion,Verify labels and calculation,10,Applies only when both fields are provided
+R013,Low,Text begins with formula-like character,Preserve as text and review before spreadsheet export,2,Finding is a safe handling prompt not malware detection
+R014,Medium,Single category exceeds 80 percent of supplied amount,Check concentration and classification,5,Not a pricing judgement
+R015,Medium,Rate is over 10x or under 0.1x this file's median positive rate,Check unit/decimal/source rate,5,File-relative anomaly only; not a correctness judgement
+R016,High,Markup equals -100 percent while margin is supplied,Correct or clear markup/margin values,10,Margin conversion is mathematically undefined at -100 percent markup
+R017,High,Optional numeric value is non-finite or invalid,Use a finite decimal or leave optional field blank,10,Does not repair or infer a source value
