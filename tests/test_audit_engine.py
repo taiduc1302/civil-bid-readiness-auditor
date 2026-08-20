@@ -42,11 +42,19 @@ class AuditEngineTests(unittest.TestCase):
 
     def test_csv_and_alias_mapping(self):
         sheets = parse_csv_bytes(b"Item,Qty,UOM,Unit Price,Total\nPipe,2,EA,10,20\n")
-        headers = list(sheets["upload"] [0])
+        headers = list(sheets["upload"][0])
         self.assertEqual(column_map(headers), {"description": "Item", "quantity": "Qty", "unit": "UOM", "rate": "Unit Price", "amount": "Total"})
         result = audit(sheets)
         self.assertEqual(result["score"], 100)
         self.assertEqual(result["rows_reviewed"], 1)
+
+    def test_optional_hierarchy_aliases_are_detected(self):
+        headers = ["Description", "Qty", "UOM", "Unit Price", "Bid Item No", "Activity Code", "Resource Type", "Resource Code"]
+        mapped = column_map(headers)
+        self.assertEqual(mapped["bid_item"], "Bid Item No")
+        self.assertEqual(mapped["activity"], "Activity Code")
+        self.assertEqual(mapped["resource_type"], "Resource Type")
+        self.assertEqual(mapped["resource_code"], "Resource Code")
 
     def test_blank_malformed_and_unsupported_input(self):
         with self.assertRaisesRegex(InputError, "blank"):
@@ -84,7 +92,55 @@ class AuditEngineTests(unittest.TestCase):
         self.assertLess(first["score"], 100)
         self.assertGreater(first["counts"]["High"], 0)
         self.assertEqual(first["score"], 0)
-        self.assertEqual(first["counts"], {"Critical": 0, "High": 11, "Medium": 3, "Low": 1})
+        self.assertEqual(first["counts"], {"Critical": 0, "High": 11, "Medium": 2, "Low": 1})
+
+    def test_same_description_in_different_bid_items_is_not_conflict(self):
+        result = audit({"Rows": [
+            {"Description": "Excavation", "Quantity": "100", "Unit": "BCY", "Rate": "12", "Bid Item No": "100", "Activity Code": "EXC"},
+            {"Description": "Excavation", "Quantity": "250", "Unit": "BCY", "Rate": "15", "Bid Item No": "200", "Activity Code": "EXC"},
+        ]})
+        rule_ids = {item["rule_id"] for item in result["findings"]}
+        self.assertNotIn("R009", rule_ids)
+        self.assertNotIn("R010", rule_ids)
+
+    def test_same_description_in_same_context_still_conflicts(self):
+        result = audit({"Rows": [
+            {"Description": "Excavation", "Quantity": "100", "Unit": "BCY", "Rate": "12", "Bid Item No": "100", "Activity Code": "EXC"},
+            {"Description": "Excavation", "Quantity": "250", "Unit": "BCY", "Rate": "15", "Bid Item No": "100", "Activity Code": "EXC"},
+        ]})
+        self.assertIn("R009", {item["rule_id"] for item in result["findings"]})
+
+    def test_rate_outliers_are_compared_only_with_peer_unit_and_class(self):
+        rows = [
+            {"Description": "Excavator A", "Quantity": "1", "Unit": "HR", "Rate": "180", "Resource Type": "Equipment"},
+            {"Description": "Excavator B", "Quantity": "1", "Unit": "HR", "Rate": "190", "Resource Type": "Equipment"},
+            {"Description": "Dozer", "Quantity": "1", "Unit": "HR", "Rate": "200", "Resource Type": "Equipment"},
+            {"Description": "Loader", "Quantity": "1", "Unit": "HR", "Rate": "2500", "Resource Type": "Equipment"},
+            {"Description": "Mobilization", "Quantity": "1", "Unit": "LS", "Rate": "50000", "Resource Type": "Subcontract"},
+        ]
+        result = audit({"Rows": rows})
+        outliers = [item for item in result["findings"] if item["rule_id"] == "R015"]
+        self.assertEqual(len(outliers), 1)
+        self.assertEqual(outliers[0]["row"], 5)
+        self.assertIn("unit hr", outliers[0]["evidence"])
+        self.assertIn("class equipment", outliers[0]["evidence"])
+
+    def test_different_units_do_not_create_global_rate_outlier(self):
+        rows = [
+            {"Description": "Mobilization", "Quantity": "1", "Unit": "LS", "Rate": "50000"},
+            {"Description": "Pipe", "Quantity": "1", "Unit": "M", "Rate": "120"},
+            {"Description": "Gravel", "Quantity": "1", "Unit": "TON", "Rate": "40"},
+            {"Description": "Labour", "Quantity": "1", "Unit": "HR", "Rate": "50"},
+        ]
+        result = audit({"Rows": rows})
+        self.assertNotIn("R015", {item["rule_id"] for item in result["findings"]})
+
+    def test_manual_required_mapping_keeps_auto_detected_context(self):
+        sheets = {"Rows": [{"Scope": "Pipe", "Q": "2", "Measure": "EA", "Price Each": "10", "Bid Item No": "300"}]}
+        mappings = {"Rows": {"description": "Scope", "quantity": "Q", "unit": "Measure", "rate": "Price Each"}}
+        result = audit(sheets, mappings)
+        self.assertEqual(result["rows_reviewed"], 1)
+        self.assertEqual(result["score"], 100)
 
     def test_long_special_and_formula_like_text_is_safe(self):
         long_description = "Road <&> " + "x" * 1000
