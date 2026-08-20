@@ -18,7 +18,16 @@ from xml.etree import ElementTree as ET
 
 
 REQUIRED_FIELDS = ("description", "quantity", "unit", "rate")
-OPTIONAL_FIELDS = ("amount", "category", "markup_pct", "margin_pct")
+OPTIONAL_FIELDS = (
+    "amount",
+    "category",
+    "markup_pct",
+    "margin_pct",
+    "bid_item",
+    "activity",
+    "resource_type",
+    "resource_code",
+)
 ALIASES = {
     "description": ("description", "item", "item description", "bid item", "scope"),
     "quantity": ("quantity", "qty", "quantity total"),
@@ -28,6 +37,10 @@ ALIASES = {
     "category": ("category", "cost category", "type"),
     "markup_pct": ("markup", "markup %", "markup pct"),
     "margin_pct": ("margin", "margin %", "margin pct"),
+    "bid_item": ("bid item no", "bid item number", "biditem", "biditem code", "bid item code"),
+    "activity": ("activity", "activity code", "activity id"),
+    "resource_type": ("resource type", "resource class", "cost type"),
+    "resource_code": ("resource code", "resource id", "resource no", "resource number"),
 }
 SEVERITY_WEIGHT = {"Critical": 20, "High": 10, "Medium": 5, "Low": 2}
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -221,6 +234,18 @@ def _safe_formula_text(value: str) -> bool:
     return bool(trimmed) and trimmed[0] in ("=", "+", "@")
 
 
+def _hierarchy_key(values: dict[str, str]) -> tuple[str, str, str, str]:
+    """Return optional estimating context without requiring any vendor-specific export."""
+    return tuple(normalize_name(values.get(field)) for field in ("bid_item", "activity", "resource_type", "resource_code"))
+
+
+def _peer_key(values: dict[str, str]) -> tuple[str, str]:
+    """Group comparable rates by UOM plus the strongest available resource/category class."""
+    unit = normalize_name(values.get("unit"))
+    resource_class = normalize_name(values.get("resource_type")) or normalize_name(values.get("category"))
+    return unit, resource_class
+
+
 def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str, str]] | None = None) -> dict[str, Any]:
     """Audit already-parsed records. The output is deterministic and JSON-ready."""
     findings: list[Finding] = []
@@ -235,7 +260,9 @@ def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str,
     missing_mappings: list[str] = []
     for sheet, rows in sheets.items():
         headers = [header for header in list(rows[0]) if not header.startswith("__")] if rows else []
-        map_for_sheet = (mappings or {}).get(sheet) or column_map(headers)
+        detected = column_map(headers)
+        supplied = (mappings or {}).get(sheet, {})
+        map_for_sheet = {**detected, **{field: column for field, column in supplied.items() if column}}
         missing = [field for field in REQUIRED_FIELDS if not map_for_sheet.get(field)]
         if missing:
             missing_mappings.append(f"{sheet}: {', '.join(missing)}")
@@ -249,8 +276,8 @@ def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str,
     if not all_rows:
         raise InputError("No auditable rows were found after mapping columns.")
 
-    description_groups: dict[str, list[tuple[str, int, dict[str, str]]]] = defaultdict(list)
-    duplicate_keys: dict[tuple[str, str, str, str], list[tuple[str, int]]] = defaultdict(list)
+    description_groups: dict[tuple[str, tuple[str, str, str, str]], list[tuple[str, int, dict[str, str]]]] = defaultdict(list)
+    duplicate_keys: dict[tuple[Any, ...], list[tuple[str, int]]] = defaultdict(list)
     category_amounts: Counter[str] = Counter()
     total_amount = Decimal("0")
     for sheet, row, original, values in all_rows:
@@ -290,8 +317,9 @@ def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str,
             if _safe_formula_text(value):
                 add("Low", "R013", sheet, row, field, "Text starts with a formula-like character.", value, "Preserve as text and review before spreadsheet export.")
         if desc:
-            description_groups[normalize_name(desc)].append((sheet, row, values))
-            duplicate_keys[(normalize_name(desc), normalize_name(unit), str(qty), str(rate))].append((sheet, row))
+            hierarchy = _hierarchy_key(values)
+            description_groups[(normalize_name(desc), hierarchy)].append((sheet, row, values))
+            duplicate_keys[(normalize_name(desc), hierarchy, normalize_name(unit), str(qty), str(rate))].append((sheet, row))
         markup, margin = number(values.get("markup_pct"), percent=True), number(values.get("margin_pct"), percent=True)
         for optional_field, parsed in (("amount", amount), ("markup_pct", markup), ("margin_pct", margin)):
             raw = values.get(optional_field, "").strip()
@@ -307,29 +335,40 @@ def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str,
     for key, locations in duplicate_keys.items():
         if len(locations) > 1:
             for sheet, row in locations:
-                add("Medium", "R008", sheet, row, "description", "Exact duplicate item key detected.", f"{key[0]} at {locations}", "Confirm the repeat is intended or remove the duplicate.")
-    for desc, group in description_groups.items():
+                add("Medium", "R008", sheet, row, "description", "Exact duplicate item key detected within the same estimate context.", f"{key[0]} at {locations}", "Confirm the repeat is intended or remove the duplicate.")
+    for (desc, hierarchy), group in description_groups.items():
         signatures = {(normalize_name(v.get("unit")), str(number(v.get("quantity"))), str(number(v.get("rate")))) for _, _, v in group}
         units = {normalize_name(v.get("unit")) for _, _, v in group if v.get("unit", "").strip()}
+        context_label = ", ".join(value for value in hierarchy if value) or "no hierarchy supplied"
         if len(group) > 1 and len(signatures) > 1:
             for sheet, row, _ in group:
-                add("High", "R009", sheet, row, "description", "Same description has conflicting values.", desc, "Confirm the lines represent distinct scope and values.")
+                add("High", "R009", sheet, row, "description", "Same description has conflicting values within the same estimate context.", f"{desc}; context: {context_label}", "Confirm the lines represent distinct scope and values.")
         if len(units) > 1:
             for sheet, row, _ in group:
-                add("High", "R010", sheet, row, "unit", "Same description uses inconsistent units.", ", ".join(sorted(units)), "Confirm scope segmentation and units.")
+                add("High", "R010", sheet, row, "unit", "Same description uses inconsistent units within the same estimate context.", ", ".join(sorted(units)), "Confirm scope segmentation and units.")
     if total_amount > 0:
         for category, value in category_amounts.items():
             if value / total_amount > Decimal("0.80"):
                 add("Medium", "R014", "Summary", 0, "category", "One category exceeds 80% of supplied amount.", f"{category}: {value / total_amount:.1%}", "Check concentration and category classification.")
-    positive_rates = sorted(rate for _, _, _, values in all_rows if (rate := number(values.get("rate"))) is not None and rate > 0)
-    if len(positive_rates) >= 4:
+
+    rate_peers: dict[tuple[str, str], list[tuple[str, int, Decimal]]] = defaultdict(list)
+    for sheet, row, _, values in all_rows:
+        rate = number(values.get("rate"))
+        peer = _peer_key(values)
+        if rate is not None and rate > 0 and peer[0]:
+            rate_peers[peer].append((sheet, row, rate))
+    for (unit, resource_class), peers in rate_peers.items():
+        if len(peers) < 4:
+            continue
+        positive_rates = sorted(rate for _, _, rate in peers)
         midpoint = len(positive_rates) // 2
         median = (positive_rates[midpoint - 1] + positive_rates[midpoint]) / 2 if len(positive_rates) % 2 == 0 else positive_rates[midpoint]
-        if median > 0:
-            for sheet, row, _, values in all_rows:
-                rate = number(values.get("rate"))
-                if rate is not None and rate > 0 and (rate > median * 10 or rate < median / 10):
-                    add("Medium", "R015", sheet, row, "rate", "Rate is an order-of-magnitude outlier versus this file's median positive rate.", f"rate {rate}; median {median}", "Check units, decimal placement, and source rate. This is not a correctness judgement.")
+        if median <= 0:
+            continue
+        for sheet, row, rate in peers:
+            if rate > median * 10 or rate < median / 10:
+                peer_label = f"unit {unit}" + (f", class {resource_class}" if resource_class else "")
+                add("Medium", "R015", sheet, row, "rate", "Rate is an order-of-magnitude outlier versus comparable rows in this file.", f"rate {rate}; peer median {median}; {peer_label}", "Check units, decimal placement, resource/category class, and source rate. This is not a correctness judgement.")
 
     counts = Counter(finding.severity for finding in findings)
     score = max(0, 100 - sum(SEVERITY_WEIGHT[f.severity] for f in findings))
@@ -346,7 +385,6 @@ def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str,
 def findings_csv(result: dict[str, Any]) -> bytes:
     def safe_cell(value: Any) -> Any:
         text = str(value)
-        # Defend recipients opening the report in a spreadsheet application.
         return "'" + text if text.lstrip().startswith(("=", "+", "-", "@")) else text
 
     out = io.StringIO(newline="")
