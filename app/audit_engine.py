@@ -49,6 +49,8 @@ NS_PKG = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_XLSX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
 MAX_XLSX_ENTRIES = 200
+HEADER_SCAN_ROWS = 20
+MIN_AUTO_HEADER_REQUIRED_MATCHES = 3
 
 
 class InputError(ValueError):
@@ -104,6 +106,25 @@ def column_map(headers: list[str]) -> dict[str, str]:
                 mapped[field] = lookup[candidate]
                 break
     return mapped
+
+
+def _detect_header_index(sparse_rows: list[tuple[int, list[str]]]) -> int:
+    """Choose a likely table header while retaining first-row fallback for manual mapping."""
+    scored: list[tuple[int, int, int, int]] = []
+    for index, (_, values) in enumerate(sparse_rows[:HEADER_SCAN_ROWS]):
+        headers = [item.strip() for item in values]
+        if not any(headers):
+            continue
+        mapped = column_map(headers)
+        required_matches = sum(field in mapped for field in REQUIRED_FIELDS)
+        optional_matches = sum(field in mapped for field in OPTIONAL_FIELDS)
+        scored.append((required_matches, optional_matches, -index, index))
+    if not scored:
+        return 0
+    best_required, _, _, best_index = max(scored)
+    if best_required >= MIN_AUTO_HEADER_REQUIRED_MATCHES:
+        return best_index
+    return next((index for index, (_, values) in enumerate(sparse_rows) if any(item.strip() for item in values)), 0)
 
 
 def parse_csv_bytes(data: bytes, name: str = "upload.csv") -> dict[str, list[dict[str, str]]]:
@@ -200,11 +221,12 @@ def parse_xlsx_bytes(data: bytes) -> dict[str, list[dict[str, str]]]:
                 sparse_rows.append((int(row.attrib.get("r", "0")) or len(sparse_rows) + 1, values))
             if not sparse_rows:
                 continue
-            headers = [item.strip() for item in sparse_rows[0][1]]
+            header_index = _detect_header_index(sparse_rows)
+            headers = [item.strip() for item in sparse_rows[header_index][1]]
             if not any(headers):
                 continue
             rows: list[dict[str, str]] = []
-            for source_row, source in sparse_rows[1:]:
+            for source_row, source in sparse_rows[header_index + 1:]:
                 record = {headers[i]: source[i].strip() if i < len(source) else "" for i in range(len(headers)) if headers[i]}
                 if any(record.values()):
                     record["__source_row"] = str(source_row)

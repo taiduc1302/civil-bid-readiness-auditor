@@ -12,3 +12,6 @@
 | AC-08 | The running app binds only to loopback and does not write uploaded data or make network calls. |
 | AC-09 | The UI and exports include the human-review and non-certification limitation. |
 | AC-10 | R015 compares rates only inside peer groups sharing normalized unit and resource/category class, requires at least four positive peer rates, and never uses one global median across unlike units. |
+| AC-11 | XLSX ingestion scans the first 20 worksheet rows for a likely estimate header and can skip report titles, project metadata, and blank rows while preserving original source row numbers. |
+| AC-12 | If no sufficiently confident XLSX header is found, ingestion retains first-readable-row behavior so manual mapping remains possible. |
+| AC-13 | GitHub Actions runs the unit test suite on pull requests and pushes to `main` using supported Python versions. |
