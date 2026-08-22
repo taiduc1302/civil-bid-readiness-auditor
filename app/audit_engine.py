@@ -42,6 +42,62 @@ ALIASES = {
     "resource_type": ("resource type", "resource class", "cost type"),
     "resource_code": ("resource code", "resource id", "resource no", "resource number"),
 }
+UOM_ALIASES = {
+    "hr": "hr",
+    "hrs": "hr",
+    "hour": "hr",
+    "hours": "hr",
+    "ea": "ea",
+    "each": "ea",
+    "ls": "ls",
+    "lump sum": "ls",
+    "lump-sum": "ls",
+    "ton": "ton",
+    "tons": "ton",
+    "tonne": "tonne",
+    "tonnes": "tonne",
+    "t": "tonne",
+    "kg": "kg",
+    "kilogram": "kg",
+    "kilograms": "kg",
+    "m": "m",
+    "meter": "m",
+    "meters": "m",
+    "metre": "m",
+    "metres": "m",
+    "lf": "lf",
+    "lin ft": "lf",
+    "lineal ft": "lf",
+    "linear ft": "lf",
+    "sf": "sf",
+    "sq ft": "sf",
+    "square ft": "sf",
+    "m2": "m2",
+    "m^2": "m2",
+    "sq m": "m2",
+    "square metre": "m2",
+    "square metres": "m2",
+    "m3": "m3",
+    "m^3": "m3",
+    "cu m": "m3",
+    "cubic metre": "m3",
+    "cubic metres": "m3",
+    "cy": "cy",
+    "cubic yard": "cy",
+    "cubic yards": "cy",
+    "bcy": "bcy",
+    "bank cy": "bcy",
+    "bank cubic yard": "bcy",
+    "bank cubic yards": "bcy",
+    "lcy": "lcy",
+    "loose cy": "lcy",
+    "loose cubic yard": "lcy",
+    "loose cubic yards": "lcy",
+    "ccy": "ccy",
+    "compacted cy": "ccy",
+    "compacted cubic yard": "ccy",
+    "compacted cubic yards": "ccy",
+}
 SEVERITY_WEIGHT = {"Critical": 20, "High": 10, "Medium": 5, "Low": 2}
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 NS_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -75,6 +131,12 @@ class Finding:
 
 def normalize_name(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().casefold())
+
+
+def normalize_unit(value: Any) -> str:
+    """Normalize conservative UOM spelling variants without converting measurement bases."""
+    unit = normalize_name(value)
+    return UOM_ALIASES.get(unit, unit)
 
 
 def number(value: Any, percent: bool = False) -> Decimal | None:
@@ -262,8 +324,8 @@ def _hierarchy_key(values: dict[str, str]) -> tuple[str, str, str, str]:
 
 
 def _peer_key(values: dict[str, str]) -> tuple[str, str]:
-    """Group comparable rates by UOM plus the strongest available resource/category class."""
-    unit = normalize_name(values.get("unit"))
+    """Group comparable rates by conservative normalized UOM plus resource/category class."""
+    unit = normalize_unit(values.get("unit"))
     resource_class = normalize_name(values.get("resource_type")) or normalize_name(values.get("category"))
     return unit, resource_class
 
@@ -308,6 +370,7 @@ def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str,
         rate = number(values.get("rate"))
         amount = number(values.get("amount"))
         unit = values.get("unit", "").strip()
+        normalized_unit = normalize_unit(unit)
         if not desc:
             add("Critical", "R001", sheet, row, "description", "Description is blank.", "", "Supply an item description and confirm scope with a reviewer.")
         if qty is None:
@@ -341,7 +404,7 @@ def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str,
         if desc:
             hierarchy = _hierarchy_key(values)
             description_groups[(normalize_name(desc), hierarchy)].append((sheet, row, values))
-            duplicate_keys[(normalize_name(desc), hierarchy, normalize_name(unit), str(qty), str(rate))].append((sheet, row))
+            duplicate_keys[(normalize_name(desc), hierarchy, normalized_unit, str(qty), str(rate))].append((sheet, row))
         markup, margin = number(values.get("markup_pct"), percent=True), number(values.get("margin_pct"), percent=True)
         for optional_field, parsed in (("amount", amount), ("markup_pct", markup), ("margin_pct", margin)):
             raw = values.get(optional_field, "").strip()
@@ -359,8 +422,8 @@ def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str,
             for sheet, row in locations:
                 add("Medium", "R008", sheet, row, "description", "Exact duplicate item key detected within the same estimate context.", f"{key[0]} at {locations}", "Confirm the repeat is intended or remove the duplicate.")
     for (desc, hierarchy), group in description_groups.items():
-        signatures = {(normalize_name(v.get("unit")), str(number(v.get("quantity"))), str(number(v.get("rate")))) for _, _, v in group}
-        units = {normalize_name(v.get("unit")) for _, _, v in group if v.get("unit", "").strip()}
+        signatures = {(normalize_unit(v.get("unit")), str(number(v.get("quantity"))), str(number(v.get("rate")))) for _, _, v in group}
+        units = {normalize_unit(v.get("unit")) for _, _, v in group if v.get("unit", "").strip()}
         context_label = ", ".join(value for value in hierarchy if value) or "no hierarchy supplied"
         if len(group) > 1 and len(signatures) > 1:
             for sheet, row, _ in group:
@@ -394,13 +457,37 @@ def audit(sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str,
 
     counts = Counter(finding.severity for finding in findings)
     score = max(0, 100 - sum(SEVERITY_WEIGHT[f.severity] for f in findings))
+    affected_locations = {(finding.sheet, finding.row) for finding in findings if finding.row > 0}
+    priority_locations = {(finding.sheet, finding.row) for finding in findings if finding.row > 0 and finding.severity in ("Critical", "High")}
+    rows_reviewed = len(all_rows)
+    affected_rows = len(affected_locations)
+    affected_percent = round((affected_rows / rows_reviewed * 100), 2) if rows_reviewed else 0.0
+    if counts.get("Critical", 0):
+        review_status = "Critical review required"
+    elif counts.get("High", 0):
+        review_status = "High-priority review required"
+    elif counts.get("Medium", 0):
+        review_status = "Review recommended"
+    elif counts.get("Low", 0):
+        review_status = "Minor review prompts"
+    else:
+        review_status = "No deterministic findings"
+    review_metrics = {
+        "status": review_status,
+        "finding_count": len(findings),
+        "affected_rows": affected_rows,
+        "affected_row_percent": affected_percent,
+        "priority_rows": len(priority_locations),
+        "summary_findings": sum(1 for finding in findings if finding.row == 0),
+    }
     return {
         "findings": [finding.to_dict() for finding in findings],
         "counts": {severity: counts.get(severity, 0) for severity in ("Critical", "High", "Medium", "Low")},
         "score": score,
-        "rows_reviewed": len(all_rows),
+        "rows_reviewed": rows_reviewed,
         "sheets_reviewed": sorted(sheets),
-        "score_explanation": "100 minus 20 per Critical, 10 per High, 5 per Medium, and 2 per Low finding; never below 0. It measures deterministic review prompts, not bid correctness or readiness.",
+        "review_metrics": review_metrics,
+        "score_explanation": "Legacy review-status score: 100 minus 20 per Critical, 10 per High, 5 per Medium, and 2 per Low finding; never below 0. Use affected-row and severity metrics as the primary review indicators. Neither measure validates bid correctness or readiness.",
     }
 
 
@@ -419,9 +506,10 @@ def findings_csv(result: dict[str, Any]) -> bytes:
 
 def management_summary_html(result: dict[str, Any], filename: str) -> bytes:
     counts = result["counts"]
+    metrics = result["review_metrics"]
     rows = "".join(
         "<tr>" + "".join(f"<td>{html.escape(str(finding[key]))}</td>" for key in ("severity", "rule_id", "sheet", "row", "message", "evidence", "recommended_action")) + "</tr>"
         for finding in result["findings"]
     ) or "<tr><td colspan='7'>No deterministic findings.</td></tr>"
-    page = f"""<!doctype html><html><head><meta charset='utf-8'><title>Bid review summary</title><style>body{{font-family:Arial,sans-serif;margin:2rem;color:#17212b}}table{{border-collapse:collapse;width:100%;font-size:12px}}td,th{{border:1px solid #b8c2cc;padding:6px;text-align:left}}th{{background:#e8f0f5}}.warn{{background:#fff7e1;padding:12px;border-left:4px solid #b7791f}}</style></head><body><h1>Civil Bid Readiness Auditor — Management Summary</h1><p>Input: {html.escape(filename)} | Rows reviewed: {result['rows_reviewed']} | Review-status score: <strong>{result['score']}/100</strong></p><div class='warn'><strong>Required human review:</strong> this report flags deterministic data-quality prompts only. It does not validate price, quantity, scope, profitability, contract compliance, or a bid decision.</div><h2>Finding counts</h2><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p>{html.escape(result['score_explanation'])}</p><h2>Findings</h2><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Finding</th><th>Evidence</th><th>Recommended action</th></tr></thead><tbody>{rows}</tbody></table></body></html>"""
+    page = f"""<!doctype html><html><head><meta charset='utf-8'><title>Bid review summary</title><style>body{{font-family:Arial,sans-serif;margin:2rem;color:#17212b}}table{{border-collapse:collapse;width:100%;font-size:12px}}td,th{{border:1px solid #b8c2cc;padding:6px;text-align:left}}th{{background:#e8f0f5}}.warn{{background:#fff7e1;padding:12px;border-left:4px solid #b7791f}}.metrics{{display:flex;gap:18px;flex-wrap:wrap;margin:16px 0}}.metric{{border:1px solid #b8c2cc;padding:10px 14px;border-radius:6px}}</style></head><body><h1>Civil Bid Readiness Auditor — Management Summary</h1><p>Input: {html.escape(filename)} | Rows reviewed: {result['rows_reviewed']}</p><div class='warn'><strong>Required human review:</strong> this report flags deterministic data-quality prompts only. It does not validate price, quantity, scope, profitability, contract compliance, or a bid decision.</div><h2>Review status</h2><p><strong>{html.escape(metrics['status'])}</strong></p><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><h2>Finding counts</h2><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p>{html.escape(result['score_explanation'])}</p><h2>Findings</h2><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Finding</th><th>Evidence</th><th>Recommended action</th></tr></thead><tbody>{rows}</tbody></table></body></html>"""
     return page.encode("utf-8")
