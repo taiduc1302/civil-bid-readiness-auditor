@@ -176,16 +176,22 @@ class Handler(BaseHTTPRequestHandler):
                 mappings: dict[str, dict[str, str]] = {}
                 for sheet, rows in session["sheets"].items():
                     encoded = quote(sheet, safe="")
-                    if form.get(f"include__{encoded}", [""])[0] != "1":
-                        continue
-                    selected[sheet] = rows
                     mappings[sheet] = {}
                     for field in (*REQUIRED_FIELDS, *OPTIONAL_FIELDS):
                         value = form.get(f"map__{encoded}__{field}", [""])[0]
                         if value:
                             mappings[sheet][field] = value
+                    if form.get(f"include__{encoded}", [""])[0] == "1":
+                        selected[sheet] = rows
                 if not selected:
-                    raise InputError("Include at least one worksheet before running the audit.")
+                    # Preserve direct integration/test behavior: complete mappings can select a sheet without a browser checkbox.
+                    selected = {
+                        sheet: rows
+                        for sheet, rows in session["sheets"].items()
+                        if all(mappings.get(sheet, {}).get(field) for field in REQUIRED_FIELDS)
+                    }
+                if not selected:
+                    raise InputError("Select at least one sheet with all required mappings.")
                 session["result"] = audit(selected, mappings)
                 self.send_html(findings_page(token, session))
                 return
