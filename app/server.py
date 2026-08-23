@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import cgi
 import html
 import secrets
 import time
+from email import policy
+from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from audit_engine import InputError, OPTIONAL_FIELDS, REQUIRED_FIELDS, audit, column_map, findings_csv, management_summary_html, parse_upload
 
@@ -37,21 +38,44 @@ def page(title: str, body: str) -> bytes:
 
 def home(message: str = "") -> bytes:
     alert = f"<div class='error'>{html.escape(message)}</div>" if message else ""
-    return page("Civil Bid Readiness Auditor", f"""{alert}<div class='notice'><strong>Required human review.</strong> This tool flags deterministic data-quality prompts only. It does not validate price, quantity, scope, profitability, contract compliance, or a bid decision.</div><section class='card'><h2>Audit an estimate export</h2><p>Upload a local CSV or XLSX file. Data is held temporarily in this local process memory and is not written to disk or transmitted externally by this app.</p><form action='/prepare' method='post' enctype='multipart/form-data'><input type='file' name='estimate' accept='.csv,.xlsx' required> <button type='submit'>Prepare audit</button></form><p>Or <form action='/sample' method='post' style='display:inline'><button type='submit'>Run synthetic sample</button></form></p></section>""")
+    return page("Civil Bid Readiness Auditor", f"""{alert}<div class='notice'><strong>Required human review.</strong> This tool flags deterministic data-quality prompts only. It does not validate price, quantity, scope, profitability, contract compliance, or a bid decision.</div><section class='card'><h2>Audit an estimate export</h2><p><strong>Local, deterministic review.</strong> Upload a local CSV or XLSX file. Data is held temporarily in this local process memory and is not written to disk or transmitted externally by this app.</p><form action='/prepare' method='post' enctype='multipart/form-data'><input type='file' name='estimate' accept='.csv,.xlsx' required> <button type='submit'>Prepare audit</button></form><p>Or <form action='/sample' method='post' style='display:inline'><button type='submit'>Run synthetic sample</button></form></p></section>""")
 
 
 def read_uploaded_file(handler: BaseHTTPRequestHandler) -> tuple[str, bytes]:
     content_type = handler.headers.get("Content-Type", "")
     if not content_type.startswith("multipart/form-data"):
-        raise InputError("Upload request must use multipart/form-data.")
+        raise InputError("Upload request must use multipart form data.")
     length = int(handler.headers.get("Content-Length", "0") or "0")
     if length <= 0 or length > 26 * 1024 * 1024:
         raise InputError("Upload request is empty or exceeds the local 26 MB request limit.")
-    form = cgi.FieldStorage(fp=handler.rfile, headers=handler.headers, environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": content_type, "CONTENT_LENGTH": str(length)})
-    field = form["estimate"] if "estimate" in form else None
-    if field is None or not getattr(field, "filename", ""):
-        raise InputError("Choose a CSV or XLSX file before continuing.")
-    return Path(field.filename).name, field.file.read()
+
+    raw_body = handler.rfile.read(length)
+    message_bytes = (
+        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8")
+        + raw_body
+    )
+    try:
+        message = BytesParser(policy=policy.default).parsebytes(message_bytes)
+    except Exception as exc:
+        raise InputError("Upload request contains malformed multipart form data.") from exc
+    if not message.is_multipart():
+        raise InputError("Upload request contains malformed multipart form data.")
+
+    for part in message.iter_parts():
+        if part.get_content_disposition() != "form-data":
+            continue
+        if part.get_param("name", header="content-disposition") != "estimate":
+            continue
+        filename = part.get_filename()
+        if not filename:
+            raise InputError("Choose a CSV or XLSX file before continuing.")
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            content = part.get_content()
+            payload = content.encode(part.get_content_charset() or "utf-8") if isinstance(content, str) else bytes(content)
+        return Path(filename).name, payload
+
+    raise InputError("Choose a CSV or XLSX file before continuing.")
 
 
 def mapping_page(token: str, session: dict) -> bytes:
@@ -77,7 +101,7 @@ def findings_page(token: str, session: dict) -> bytes:
     counts = result["counts"]
     metrics = result["review_metrics"]
     rows = "".join("<tr>" + "".join(f"<td>{html.escape(str(finding[key]))}</td>" if key != "severity" else f"<td class='{html.escape(str(finding[key]))}'>{html.escape(str(finding[key]))}</td>" for key in ("severity", "rule_id", "sheet", "row", "field", "message", "evidence", "recommended_action")) + "</tr>" for finding in result["findings"]) or "<tr><td colspan='8'>No deterministic findings.</td></tr>"
-    return page("Audit results", f"""<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section><section class='card'><h2>Findings</h2><div style='overflow:auto'><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th></tr></thead><tbody>{rows}</tbody></table></div></section>""")
+    return page("Audit results", f"""<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section><section class='card'><h2>Findings</h2><div style='overflow:auto'><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th></tr></thead><tbody>{rows}</tbody></table></div></section>""")
 
 
 class Handler(BaseHTTPRequestHandler):
