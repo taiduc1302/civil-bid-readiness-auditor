@@ -1,0 +1,16 @@
+resource_code,description,unit
+SC-MOB,Mobilization,LS
+EQ-EXC20,Excavator 20T,HR
+EQ-DZR,Dozer,HR
+EQ-LDR,Loader,HR
+EQ-GRD,Grader,HR
+L-OP,Operator,HR
+M-COMMON,Common excavation,BCY
+M-HAUL,Export haul,LCY
+M-PVC300,300mm PVC storm pipe,M
+L-PIPE,Pipe layer,HR
+M-PVC200,200mm PVC sanitary pipe,M
+M-DI200,200mm DI watermain pipe,M
+M-RB19,19mm road base,TON
+EQ-ROLLER,Compactor roller,HR
+SC-CURB,Concrete curb and gutter,M
