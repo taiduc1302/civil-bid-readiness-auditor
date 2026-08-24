@@ -128,3 +128,19 @@ def validate_export_rows(
             check = validate_code(resource_code, unit, resource_reference)
             results.append({"sheet": sheet, "source_row": source_row, "reference_type": "resource", **check})
     return results
+
+
+def reference_results_csv(results: Iterable[dict[str, Any]]) -> bytes:
+    """Export reference checks safely for spreadsheet review."""
+    fields = ["sheet", "source_row", "reference_type", "status", "code", "reference_code", "reference_unit", "message"]
+
+    def safe(value: Any) -> str:
+        text = str(value)
+        return "'" + text if text.lstrip().startswith(("=", "+", "-", "@")) else text
+
+    out = io.StringIO(newline="")
+    writer = csv.DictWriter(out, fieldnames=fields)
+    writer.writeheader()
+    for item in results:
+        writer.writerow({field: safe(item.get(field, "")) for field in fields})
+    return out.getvalue().encode("utf-8")
