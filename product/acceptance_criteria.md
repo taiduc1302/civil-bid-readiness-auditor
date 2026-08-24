@@ -15,3 +15,7 @@
 | AC-11 | XLSX ingestion scans the first 20 worksheet rows for a likely estimate header and can skip report titles, project metadata, and blank rows while preserving original source row numbers. |
 | AC-12 | If no sufficiently confident XLSX header is found, ingestion retains first-readable-row behavior so manual mapping remains possible. |
 | AC-13 | GitHub Actions runs the unit test suite on pull requests and pushes to `main` using supported Python versions. |
+| AC-14 | Safe UOM spelling variants normalize for deterministic comparisons without changing source values or performing quantity conversions. |
+| AC-15 | Distinct earthwork volume bases (`BCY`, `LCY`, `CCY`) and US ton versus metric tonne remain distinct unless a future explicit conversion policy is supplied. |
+| AC-16 | Audit results report unique affected rows, affected-row percentage, Critical/High priority rows, total findings, and an operational review status; the legacy score remains secondary for compatibility. |
+| AC-17 | Equivalent UOM spelling variants do not create false R010 inconsistent-unit findings and can participate in the same R015 peer group. |

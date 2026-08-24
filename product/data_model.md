@@ -26,10 +26,33 @@ The auditor remains compatible with flat generic estimate exports. When availabl
 
 The hierarchy is not required and is not treated as a vendor-specific HeavyBid schema. It is used only to reduce false-positive comparisons. In particular, duplicate/conflict rules compare repeated descriptions inside the same available hierarchy context rather than treating every identical description in the workbook as the same scope.
 
+## Conservative UOM normalization
+
+The auditor normalizes only spelling or notation variants that do not require a quantity conversion. Examples include `HR / HRS / HOUR -> hr`, `EA / EACH -> ea`, `LS / LUMP SUM -> ls`, and common metre/square-metre/cubic-metre notation variants.
+
+Measurement bases that can carry different physical or commercial meaning remain distinct. In particular:
+
+- `BCY`, `LCY`, and `CCY` are not treated as interchangeable.
+- US `TON` and metric `t / tonne` remain distinct.
+- No length, area, volume, mass, density, swell, shrink, or currency conversion is performed.
+
+The original source UOM remains unchanged in the uploaded data. Normalization is used only for deterministic comparison keys such as duplicate/unit consistency and rate peer groups.
+
 Rate-outlier review groups use normalized `unit` plus the strongest available class (`resource_type`, otherwise `category`). At least four positive rates must exist in a peer group before the outlier rule runs. This prevents unlike units such as LS, HR, EA, TON, and LF from being compared against one global file median.
 
 ## Output finding
 
 `id, severity, rule_id, sheet, row, field, message, evidence, recommended_action`
 
-The management summary includes score, severity counts, inputs reviewed, calculation method, and limitations.
+## Review metrics
+
+The result includes `review_metrics` so large estimates are not represented primarily by a score that can quickly bottom out at zero:
+
+- `status`: highest operational review level implied by deterministic findings
+- `finding_count`: total findings
+- `affected_rows`: unique source rows with one or more findings
+- `affected_row_percent`: affected rows divided by rows reviewed
+- `priority_rows`: unique rows with Critical or High findings
+- `summary_findings`: findings not tied to one source row
+
+The legacy 0-100 score remains for backward compatibility but is secondary to severity and affected-row metrics. Neither the score nor review metrics validate bid correctness or readiness.
