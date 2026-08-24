@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import secrets
 import time
+from collections import Counter
 from email import policy
 from email.parser import BytesParser
 from http import HTTPStatus
@@ -13,6 +14,14 @@ from urllib.parse import parse_qs, quote, urlparse
 from audit_engine import InputError, OPTIONAL_FIELDS, REQUIRED_FIELDS, audit, column_map, findings_csv, management_summary_html, parse_upload
 from finding_review import REVIEW_STATUSES, default_dispositions, findings_review_csv, review_metrics, set_disposition
 from heavybid_adapter import PROFILE_HEAVYBID_STYLE_RESOURCE_EXPORT, detect_heavybid_style_export, map_heavybid_style_headers
+from reference_validation import (
+    REFERENCE_STATUSES,
+    build_reference_index,
+    canonicalize_export_rows,
+    parse_reference_csv,
+    reference_results_csv,
+    validate_export_rows,
+)
 
 
 HOST = "127.0.0.1"
@@ -24,7 +33,7 @@ SESSIONS: dict[str, dict] = {}
 
 
 STYLE = """
-body{font-family:Arial,sans-serif;margin:0;background:#f4f7f9;color:#17212b}main{max-width:1180px;margin:0 auto;padding:28px}.card{background:white;border:1px solid #d7e0e7;border-radius:8px;padding:18px;margin:16px 0}h1{margin-top:0}.notice{background:#fff7e1;border-left:4px solid #b7791f;padding:12px}.error{background:#ffe9e7;border-left:4px solid #c53030;padding:12px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #d7e0e7;padding:7px;text-align:left;vertical-align:top}th{background:#e8f0f5}input,select,button{font:inherit;padding:7px}button,.button{background:#145a7a;color:white;border:0;border-radius:4px;padding:9px 14px;text-decoration:none;display:inline-block}.Critical{background:#ffd7d2}.High{background:#ffe8cf}.Medium{background:#fff5bf}.Low{background:#eaf4ff}.metrics{display:flex;gap:12px;flex-wrap:wrap}.metric{border:1px solid #d7e0e7;border-radius:6px;padding:10px 14px;min-width:145px}.metric strong{font-size:18px}.review-control{min-width:140px}.reason{min-width:220px}
+body{font-family:Arial,sans-serif;margin:0;background:#f4f7f9;color:#17212b}main{max-width:1180px;margin:0 auto;padding:28px}.card{background:white;border:1px solid #d7e0e7;border-radius:8px;padding:18px;margin:16px 0}h1{margin-top:0}.notice{background:#fff7e1;border-left:4px solid #b7791f;padding:12px}.error{background:#ffe9e7;border-left:4px solid #c53030;padding:12px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #d7e0e7;padding:7px;text-align:left;vertical-align:top}th{background:#e8f0f5}input,select,button{font:inherit;padding:7px}button,.button{background:#145a7a;color:white;border:0;border-radius:4px;padding:9px 14px;text-decoration:none;display:inline-block}.Critical{background:#ffd7d2}.High{background:#ffe8cf}.Medium{background:#fff5bf}.Low{background:#eaf4ff}.metrics{display:flex;gap:12px;flex-wrap:wrap}.metric{border:1px solid #d7e0e7;border-radius:6px;padding:10px 14px;min-width:145px}.metric strong{font-size:18px}.review-control{min-width:140px}.reason{min-width:220px}.MATCH{background:#e7f6ea}.UNIT_MISMATCH,.NO_MATCH{background:#fff0d8}.NOT_CHECKED{background:#f0f2f4}
 """
 
 
@@ -43,7 +52,7 @@ def home(message: str = "") -> bytes:
     return page("Civil Bid Readiness Auditor", f"""{alert}<div class='notice'><strong>Required human review.</strong> This tool flags deterministic data-quality prompts only. It does not validate price, quantity, scope, profitability, contract compliance, or a bid decision.</div><section class='card'><h2>Audit an estimate export</h2><p><strong>Local, deterministic review.</strong> Upload a local CSV or XLSX file. Data is held temporarily in this local process memory and is not written to disk or transmitted externally by this app.</p><form action='/prepare' method='post' enctype='multipart/form-data'><input type='file' name='estimate' accept='.csv,.xlsx' required> <button type='submit'>Prepare audit</button></form><p>Or <form action='/sample' method='post' style='display:inline'><button type='submit'>Run synthetic sample</button></form></p></section>""")
 
 
-def read_uploaded_file(handler: BaseHTTPRequestHandler) -> tuple[str, bytes]:
+def read_named_uploads(handler: BaseHTTPRequestHandler, allowed_names: set[str]) -> dict[str, tuple[str, bytes]]:
     content_type = handler.headers.get("Content-Type", "")
     if not content_type.startswith("multipart/form-data"):
         raise InputError("Upload request must use multipart form data.")
@@ -63,21 +72,29 @@ def read_uploaded_file(handler: BaseHTTPRequestHandler) -> tuple[str, bytes]:
     if not message.is_multipart():
         raise InputError("Upload request contains malformed multipart form data.")
 
+    uploads: dict[str, tuple[str, bytes]] = {}
     for part in message.iter_parts():
         if part.get_content_disposition() != "form-data":
             continue
-        if part.get_param("name", header="content-disposition") != "estimate":
+        field_name = part.get_param("name", header="content-disposition")
+        if field_name not in allowed_names:
             continue
         filename = part.get_filename()
         if not filename:
-            raise InputError("Choose a CSV or XLSX file before continuing.")
+            continue
         payload = part.get_payload(decode=True)
         if payload is None:
             content = part.get_content()
             payload = content.encode(part.get_content_charset() or "utf-8") if isinstance(content, str) else bytes(content)
-        return Path(filename).name, payload
+        uploads[field_name] = (Path(filename).name, payload)
+    return uploads
 
-    raise InputError("Choose a CSV or XLSX file before continuing.")
+
+def read_uploaded_file(handler: BaseHTTPRequestHandler) -> tuple[str, bytes]:
+    uploads = read_named_uploads(handler, {"estimate"})
+    if "estimate" not in uploads:
+        raise InputError("Choose a CSV or XLSX file before continuing.")
+    return uploads["estimate"]
 
 
 def detected_mapping(headers: list[str]) -> tuple[dict[str, str], str | None]:
@@ -129,6 +146,32 @@ def _review_row(finding: dict, state: dict[str, str]) -> str:
     )
 
 
+def _reference_panel(token: str, session: dict) -> str:
+    upload_form = f"""<form action='/references' method='post' enctype='multipart/form-data'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><p><label>Activity reference CSV <input type='file' name='activity_reference' accept='.csv'></label></p><p><label>Resource reference CSV <input type='file' name='resource_reference' accept='.csv'></label></p><p><button type='submit'>Validate against supplied references</button></p></form>"""
+    results = session.get("reference_results")
+    if not results:
+        return f"<section class='card'><h2>Governed reference validation</h2><p>Optional. Upload an explicitly approved Activity and/or Resource reference CSV. Required columns are <code>activity_code,unit</code> or <code>resource_code,unit</code>. This check never guesses replacement codes or converts units.</p>{upload_form}</section>"
+
+    counts = Counter(item["status"] for item in results)
+    summary = " | ".join(f"{status}: {counts.get(status, 0)}" for status in REFERENCE_STATUSES)
+    exceptions = [item for item in results if item["status"] != "MATCH"]
+    rows = "".join(
+        "<tr>"
+        f"<td class='{html.escape(item['status'])}'>{html.escape(item['status'])}</td>"
+        f"<td>{html.escape(item['reference_type'])}</td>"
+        f"<td>{html.escape(str(item.get('sheet', '')))}</td>"
+        f"<td>{html.escape(str(item['source_row']))}</td>"
+        f"<td>{html.escape(item['code'])}</td>"
+        f"<td>{html.escape(item['reference_code'])}</td>"
+        f"<td>{html.escape(item['reference_unit'])}</td>"
+        f"<td>{html.escape(item['message'])}</td>"
+        "</tr>"
+        for item in exceptions
+    ) or "<tr><td colspan='8'>No reference exceptions. All checked codes matched the supplied references.</td></tr>"
+    source_text = ", ".join(html.escape(name) for name in session.get("reference_sources", []))
+    return f"""<section class='card'><h2>Governed reference validation</h2><p><strong>Supplied references:</strong> {source_text or 'not recorded'}<br><strong>Results:</strong> {html.escape(summary)}</p><p>These checks use only the explicitly uploaded reference files for this temporary session. A match is not HeavyBid import approval.</p><p><a class='button' href='/export/references?token={html.escape(token, quote=True)}'>Download reference checks CSV</a></p><div style='overflow:auto'><table><thead><tr><th>Status</th><th>Type</th><th>Sheet</th><th>Row</th><th>Source code</th><th>Reference code</th><th>Reference unit</th><th>Message</th></tr></thead><tbody>{rows}</tbody></table></div><h3>Replace / rerun references</h3>{upload_form}</section>"""
+
+
 def findings_page(token: str, session: dict, message: str = "") -> bytes:
     result = session["result"]
     counts = result["counts"]
@@ -141,7 +184,8 @@ def findings_page(token: str, session: dict, message: str = "") -> bytes:
     ) or "<tr><td colspan='10'>No deterministic findings.</td></tr>"
     alert = f"<div class='notice'>{html.escape(message)}</div>" if message else ""
     review_summary = " | ".join(f"{html.escape(status)}: {disposition_counts[status]}" for status in REVIEW_STATUSES)
-    return page("Audit results", f"""{alert}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section><section class='card'><h2>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save review states</button></p></form></section>""")
+    reference_panel = _reference_panel(token, session)
+    return page("Audit results", f"""{alert}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section><section class='card'><h2>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save review states</button></p></form></section>{reference_panel}""")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -174,6 +218,8 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path.endswith("review"):
                 dispositions = session.setdefault("dispositions", default_dispositions(session["result"]))
                 content, filename, ctype = findings_review_csv(session["result"], dispositions), "bid_audit_review.csv", "text/csv; charset=utf-8"
+            elif parsed.path.endswith("references"):
+                content, filename, ctype = reference_results_csv(session.get("reference_results", [])), "bid_audit_reference_checks.csv", "text/csv; charset=utf-8"
             elif parsed.path.endswith("summary"):
                 content, filename, ctype = management_summary_html(session["result"], session["filename"]), "bid_audit_management_summary.html", "text/html; charset=utf-8"
             else:
@@ -194,8 +240,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path == "/prepare":
                 uploaded_name, data = read_uploaded_file(self)
-                if not uploaded_name:
-                    raise InputError("Choose a CSV or XLSX file before continuing.")
                 session = {"filename": Path(uploaded_name).name, "sheets": parse_upload(uploaded_name, data), "created": time.monotonic()}
                 token = secrets.token_urlsafe(18)
                 SESSIONS[token] = session
@@ -235,7 +279,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not selected:
                     raise InputError("Select at least one sheet with all required mappings.")
                 session["result"] = audit(selected, mappings)
+                session["audit_sheets"] = selected
+                session["mappings"] = mappings
                 session["dispositions"] = default_dispositions(session["result"])
+                session.pop("reference_results", None)
+                session.pop("reference_sources", None)
                 self.send_html(findings_page(token, session))
                 return
             if parsed.path == "/review":
@@ -255,6 +303,44 @@ class Handler(BaseHTTPRequestHandler):
                     set_disposition(pending, finding_id, status, reason)
                 session["dispositions"] = pending
                 self.send_html(findings_page(token, session, "Review states saved for this temporary local session."))
+                return
+            if parsed.path == "/references":
+                query = parse_qs(urlparse(self.path).query)
+                token = query.get("token", [""])[0]
+                uploads = read_named_uploads(self, {"activity_reference", "resource_reference"})
+                if not token:
+                    # token is normally a multipart form field, recovered below from the parsed MIME body is not available here.
+                    # Require the query parameter to keep reference uploads explicit and unambiguous.
+                    raise InputError("Reference validation request is missing the audit session token.")
+                session = SESSIONS.get(token)
+                if not session or "result" not in session or "audit_sheets" not in session:
+                    raise InputError("This temporary audit session expired. Upload the estimate again.")
+                if not uploads:
+                    raise InputError("Choose at least one Activity or Resource reference CSV.")
+                mappings = session.get("mappings", {})
+                activity_index = None
+                resource_index = None
+                sources: list[str] = []
+                if "activity_reference" in uploads:
+                    if not any(mapping.get("activity") for mapping in mappings.values()):
+                        raise InputError("Activity reference was supplied, but no Activity field is mapped in the audited estimate.")
+                    name, data = uploads["activity_reference"]
+                    if Path(name).suffix.casefold() != ".csv":
+                        raise InputError("Activity reference must be a CSV file.")
+                    activity_index = build_reference_index(parse_reference_csv(data, "activity_code"), "activity_code")
+                    sources.append(name)
+                if "resource_reference" in uploads:
+                    if not any(mapping.get("resource_code") for mapping in mappings.values()):
+                        raise InputError("Resource reference was supplied, but no Resource Code field is mapped in the audited estimate.")
+                    name, data = uploads["resource_reference"]
+                    if Path(name).suffix.casefold() != ".csv":
+                        raise InputError("Resource reference must be a CSV file.")
+                    resource_index = build_reference_index(parse_reference_csv(data, "resource_code"), "resource_code")
+                    sources.append(name)
+                canonical_rows = canonicalize_export_rows(session["audit_sheets"], mappings)
+                session["reference_results"] = validate_export_rows(canonical_rows, activity_index, resource_index)
+                session["reference_sources"] = sources
+                self.send_html(findings_page(token, session, "Governed reference validation completed using the explicitly supplied CSV file(s)."))
                 return
         except (InputError, ValueError) as exc:
             self.send_html(home(str(exc)), HTTPStatus.BAD_REQUEST)
