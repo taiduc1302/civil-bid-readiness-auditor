@@ -19,3 +19,6 @@
 | AC-15 | Distinct earthwork volume bases (`BCY`, `LCY`, `CCY`) and US ton versus metric tonne remain distinct unless a future explicit conversion policy is supplied. |
 | AC-16 | Audit results report unique affected rows, affected-row percentage, Critical/High priority rows, total findings, and an operational review status; the legacy score remains secondary for compatibility. |
 | AC-17 | Equivalent UOM spelling variants do not create false R010 inconsistent-unit findings and can participate in the same R015 peer group. |
+| AC-18 | A fictional hierarchical civil estimate fixture exercises Bid Item / Activity / Resource context, safe UOM normalization, duplicate detection, extension mismatch, zero placeholders, and peer-relative rate outliers without using live company/project data. |
+| AC-19 | A named structured-civil export profile maps known source headers into canonical fields deterministically and leaves missing/unknown columns unmapped rather than guessing values. |
+| AC-20 | Export profiles remain a thin adapter layer: they do not infer quantities, rates, units, resource classes, codes, or company-specific codebook values. |
