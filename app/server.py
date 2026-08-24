@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 from audit_engine import InputError, OPTIONAL_FIELDS, REQUIRED_FIELDS, audit, column_map, findings_csv, management_summary_html, parse_upload
+from finding_review import REVIEW_STATUSES, default_dispositions, findings_review_csv, review_metrics, set_disposition
 from heavybid_adapter import PROFILE_HEAVYBID_STYLE_RESOURCE_EXPORT, detect_heavybid_style_export, map_heavybid_style_headers
 
 
@@ -23,7 +24,7 @@ SESSIONS: dict[str, dict] = {}
 
 
 STYLE = """
-body{font-family:Arial,sans-serif;margin:0;background:#f4f7f9;color:#17212b}main{max-width:1180px;margin:0 auto;padding:28px}.card{background:white;border:1px solid #d7e0e7;border-radius:8px;padding:18px;margin:16px 0}h1{margin-top:0}.notice{background:#fff7e1;border-left:4px solid #b7791f;padding:12px}.error{background:#ffe9e7;border-left:4px solid #c53030;padding:12px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #d7e0e7;padding:7px;text-align:left;vertical-align:top}th{background:#e8f0f5}input,select,button{font:inherit;padding:7px}button,.button{background:#145a7a;color:white;border:0;border-radius:4px;padding:9px 14px;text-decoration:none;display:inline-block}.Critical{background:#ffd7d2}.High{background:#ffe8cf}.Medium{background:#fff5bf}.Low{background:#eaf4ff}.metrics{display:flex;gap:12px;flex-wrap:wrap}.metric{border:1px solid #d7e0e7;border-radius:6px;padding:10px 14px;min-width:145px}.metric strong{font-size:18px}
+body{font-family:Arial,sans-serif;margin:0;background:#f4f7f9;color:#17212b}main{max-width:1180px;margin:0 auto;padding:28px}.card{background:white;border:1px solid #d7e0e7;border-radius:8px;padding:18px;margin:16px 0}h1{margin-top:0}.notice{background:#fff7e1;border-left:4px solid #b7791f;padding:12px}.error{background:#ffe9e7;border-left:4px solid #c53030;padding:12px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #d7e0e7;padding:7px;text-align:left;vertical-align:top}th{background:#e8f0f5}input,select,button{font:inherit;padding:7px}button,.button{background:#145a7a;color:white;border:0;border-radius:4px;padding:9px 14px;text-decoration:none;display:inline-block}.Critical{background:#ffd7d2}.High{background:#ffe8cf}.Medium{background:#fff5bf}.Low{background:#eaf4ff}.metrics{display:flex;gap:12px;flex-wrap:wrap}.metric{border:1px solid #d7e0e7;border-radius:6px;padding:10px 14px;min-width:145px}.metric strong{font-size:18px}.review-control{min-width:140px}.reason{min-width:220px}
 """
 
 
@@ -80,7 +81,6 @@ def read_uploaded_file(handler: BaseHTTPRequestHandler) -> tuple[str, bytes]:
 
 
 def detected_mapping(headers: list[str]) -> tuple[dict[str, str], str | None]:
-    """Return preselected mapping plus an optional recognized profile label."""
     generic = column_map(headers)
     if not detect_heavybid_style_export(headers):
         return generic, None
@@ -111,12 +111,37 @@ def mapping_page(token: str, session: dict) -> bytes:
     return page("Map columns", f"<form action='/audit' method='post'><input type='hidden' name='token' value='{token}'>{''.join(blocks)}<p><button type='submit'>Run deterministic audit</button> <a href='/'>Cancel</a></p></form>")
 
 
-def findings_page(token: str, session: dict) -> bytes:
+def _review_row(finding: dict, state: dict[str, str]) -> str:
+    finding_id = int(finding["id"])
+    status_options = "".join(
+        f"<option value='{html.escape(status, quote=True)}'{' selected' if state['status'] == status else ''}>{html.escape(status)}</option>"
+        for status in REVIEW_STATUSES
+    )
+    cells = "".join(
+        f"<td>{html.escape(str(finding[key]))}</td>" if key != "severity" else f"<td class='{html.escape(str(finding[key]))}'>{html.escape(str(finding[key]))}</td>"
+        for key in ("severity", "rule_id", "sheet", "row", "field", "message", "evidence", "recommended_action")
+    )
+    return (
+        "<tr>" + cells
+        + f"<td><select class='review-control' name='status__{finding_id}'>{status_options}</select></td>"
+        + f"<td><input class='reason' type='text' name='reason__{finding_id}' value='{html.escape(state['reason'], quote=True)}' placeholder='Reason / review note'></td>"
+        + "</tr>"
+    )
+
+
+def findings_page(token: str, session: dict, message: str = "") -> bytes:
     result = session["result"]
     counts = result["counts"]
     metrics = result["review_metrics"]
-    rows = "".join("<tr>" + "".join(f"<td>{html.escape(str(finding[key]))}</td>" if key != "severity" else f"<td class='{html.escape(str(finding[key]))}'>{html.escape(str(finding[key]))}</td>" for key in ("severity", "rule_id", "sheet", "row", "field", "message", "evidence", "recommended_action")) + "</tr>" for finding in result["findings"]) or "<tr><td colspan='8'>No deterministic findings.</td></tr>"
-    return page("Audit results", f"""<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section><section class='card'><h2>Findings</h2><div style='overflow:auto'><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th></tr></thead><tbody>{rows}</tbody></table></div></section>""")
+    dispositions = session.setdefault("dispositions", default_dispositions(result))
+    disposition_counts = review_metrics(result, dispositions)
+    rows = "".join(
+        _review_row(finding, dispositions.get(int(finding["id"]), {"status": "Open", "reason": ""}))
+        for finding in result["findings"]
+    ) or "<tr><td colspan='10'>No deterministic findings.</td></tr>"
+    alert = f"<div class='notice'>{html.escape(message)}</div>" if message else ""
+    review_summary = " | ".join(f"{html.escape(status)}: {disposition_counts[status]}" for status in REVIEW_STATUSES)
+    return page("Audit results", f"""{alert}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section><section class='card'><h2>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save review states</button></p></form></section>""")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -146,6 +171,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if parsed.path.endswith("findings"):
                 content, filename, ctype = findings_csv(session["result"]), "bid_audit_findings.csv", "text/csv; charset=utf-8"
+            elif parsed.path.endswith("review"):
+                dispositions = session.setdefault("dispositions", default_dispositions(session["result"]))
+                content, filename, ctype = findings_review_csv(session["result"], dispositions), "bid_audit_review.csv", "text/csv; charset=utf-8"
             elif parsed.path.endswith("summary"):
                 content, filename, ctype = management_summary_html(session["result"], session["filename"]), "bid_audit_management_summary.html", "text/html; charset=utf-8"
             else:
@@ -207,7 +235,26 @@ class Handler(BaseHTTPRequestHandler):
                 if not selected:
                     raise InputError("Select at least one sheet with all required mappings.")
                 session["result"] = audit(selected, mappings)
+                session["dispositions"] = default_dispositions(session["result"])
                 self.send_html(findings_page(token, session))
+                return
+            if parsed.path == "/review":
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                body = self.rfile.read(length).decode("utf-8")
+                form = parse_qs(body, keep_blank_values=True)
+                token = form.get("token", [""])[0]
+                session = SESSIONS.get(token)
+                if not session or "result" not in session:
+                    raise InputError("This temporary audit session expired. Upload the file again.")
+                dispositions = session.setdefault("dispositions", default_dispositions(session["result"]))
+                pending = {finding_id: dict(state) for finding_id, state in dispositions.items()}
+                for finding in session["result"]["findings"]:
+                    finding_id = int(finding["id"])
+                    status = form.get(f"status__{finding_id}", [pending[finding_id]["status"]])[0]
+                    reason = form.get(f"reason__{finding_id}", [pending[finding_id]["reason"]])[0]
+                    set_disposition(pending, finding_id, status, reason)
+                session["dispositions"] = pending
+                self.send_html(findings_page(token, session, "Review states saved for this temporary local session."))
                 return
         except (InputError, ValueError) as exc:
             self.send_html(home(str(exc)), HTTPStatus.BAD_REQUEST)
