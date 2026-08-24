@@ -1,0 +1,9 @@
+activity_code,description,unit
+MOB,Project mobilization,LS
+EXC,Common excavation,BCY
+HAUL,Export haul,LCY
+STM300,300mm storm main,M
+SAN200,200mm sanitary main,M
+WAT200,200mm watermain,M
+RB19,19mm road base,TON
+CURB,Concrete curb,M
