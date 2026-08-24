@@ -1,0 +1,32 @@
+Bid Item No,Bid Item Description,Activity Code,Activity Description,Resource Type,Resource Code,Description,Quantity,Unit,Rate,Amount,Category,Notes
+100,Mobilization,MOB,Project mobilization,Subcontract,SC-MOB,Mobilization,1,LS,35000,35000,General,Fictional test fixture
+200,Earthworks,STRIP,Strip topsoil,Equipment,EQ-EXC-20,Excavator 20T,45,HR,185,8325,Equipment,Comparable hourly equipment peer
+200,Earthworks,STRIP,Strip topsoil,Equipment,EQ-DZR-D6,Dozer D6,40,HRS,195,7800,Equipment,Comparable hourly equipment peer
+200,Earthworks,STRIP,Strip topsoil,Equipment,EQ-LDR-950,Loader 950,32,Hours,205,6560,Equipment,Comparable hourly equipment peer
+200,Earthworks,STRIP,Strip topsoil,Equipment,EQ-GRD-140,Grader 140,20,Hour,2500,50000,Equipment,Intentional R015 rate outlier
+200,Earthworks,EXC,Common excavation,Labour,L-OP,Operator,120,HR,58,6960,Labour,
+200,Earthworks,EXC,Common excavation,Equipment,EQ-EXC-30,Excavator 30T,120,HR,225,27000,Equipment,
+200,Earthworks,EXC,Common excavation,Material,M-DISP,Disposal tipping,600,TON,18,10800,Material,
+200,Earthworks,EXC,Common excavation,Material,M-IMPORT,Imported fill,850,TON,24,20400,Material,
+200,Earthworks,EXC,Common excavation,Material,M-COMMON,Common excavation,1200,BCY,12.5,15000,Earthworks,BCY intentionally distinct from LCY
+200,Earthworks,HAUL,Export haul,Material,M-HAUL,Export haul,1450,LCY,8.5,12325,Earthworks,LCY intentionally distinct from BCY
+300,Storm Sewer,STM-300,300mm storm main,Material,M-PVC300,300mm PVC storm pipe,420,M,78,32760,Material,
+300,Storm Sewer,STM-300,300mm storm main,Labour,L-PIPE,Pipe layer,84,HR,52,4368,Labour,
+300,Storm Sewer,STM-300,300mm storm main,Equipment,EQ-EXC-20,Excavator 20T,84,HR,185,15540,Equipment,
+300,Storm Sewer,STM-MH,Storm manholes,Material,M-MH1200,1200mm storm manhole,6,EA,4200,25200,Material,
+300,Storm Sewer,STM-MH,Storm manholes,Labour,L-PIPE,Pipe layer,48,HR,52,2496,Labour,
+400,Sanitary Sewer,SAN-200,200mm sanitary main,Material,M-PVC200,200mm PVC sanitary pipe,310,M,64,19840,Material,
+400,Sanitary Sewer,SAN-200,200mm sanitary main,Labour,L-PIPE,Pipe layer,62,HR,52,3224,Labour,
+500,Watermain,WAT-200,200mm watermain,Material,M-DI200,200mm DI watermain pipe,360,M,115,41400,Material,
+500,Watermain,WAT-200,200mm watermain,Labour,L-PIPE,Pipe layer,72,HR,52,3744,Labour,
+600,Roadworks,RB-19,19mm road base,Material,M-RB19,19mm road base,900,TON,28,25200,Material,
+600,Roadworks,RB-19,19mm road base,Equipment,EQ-GRD-140,Grader 140,18,HR,210,3780,Equipment,
+600,Roadworks,RB-19,19mm road base,Equipment,EQ-ROLLER,Compactor roller,18,HR,165,2970,Equipment,
+600,Roadworks,CURB,Concrete curb,Subcontract,SC-CURB,Concrete curb and gutter,640,M,72,46080,Subcontract,
+700,Traffic Control,TCP,Traffic control,Subcontract,SC-TCP,Traffic control,1,LS,28000,28000,General,
+800,Electrical,HYDRO,Duct bank,Material,M-DUCT100,100mm duct,220,M,14,3080,Material,
+800,Electrical,HYDRO,Duct bank,Labour,L-LAB,General labour,64,HR,42,2688,Labour,
+900,QA Example,QA-DUP,Duplicate example,Material,M-QA,Granular base,100,TON,30,3000,Material,Intentional duplicate pair
+900,QA Example,QA-DUP,Duplicate example,Material,M-QA,Granular base,100,TON,30,3000,Material,Intentional duplicate pair
+910,QA Example,QA-EXT,Extension mismatch,Material,M-QA2,Concrete,2,M3,150,500,Material,Intentional R011 mismatch
+920,QA Example,QA-ZERO,Zero placeholder,Subcontract,SC-ZERO,Allowance placeholder,0,LS,0,0,General,Intentional zero quantity and rate
