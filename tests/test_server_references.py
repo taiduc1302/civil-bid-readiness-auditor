@@ -101,7 +101,13 @@ class ServerReferenceTests(unittest.TestCase):
     def test_reference_upload_rejects_missing_file(self):
         token = self.audited_heavybid_fixture()
         boundary = "----empty-ref"
-        body = f"--{boundary}--\r\n".encode()
+        body = (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="resource_reference"; filename=""\r\n'
+            "Content-Type: application/octet-stream\r\n\r\n"
+            "\r\n"
+            f"--{boundary}--\r\n"
+        ).encode()
         status, _, page = self.request("POST", f"/references?token={token}", body, {
             "Content-Type": f'multipart/form-data; boundary="{boundary}"', "Content-Length": str(len(body)),
         })
