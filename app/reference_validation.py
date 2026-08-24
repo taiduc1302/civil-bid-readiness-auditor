@@ -6,12 +6,41 @@ whether explicitly supplied units agree after conservative UOM normalization.
 """
 from __future__ import annotations
 
+import csv
+import io
 from typing import Any, Iterable
 
 from audit_engine import normalize_name, normalize_unit
 
 
 REFERENCE_STATUSES = ("MATCH", "UNIT_MISMATCH", "NO_MATCH", "NOT_CHECKED")
+MAX_REFERENCE_BYTES = 5 * 1024 * 1024
+
+
+def parse_reference_csv(data: bytes, code_field: str) -> list[dict[str, str]]:
+    """Parse a small UTF-8 governed reference CSV with explicit code/unit columns."""
+    if not data.strip():
+        raise ValueError("Reference CSV is blank.")
+    if len(data) > MAX_REFERENCE_BYTES:
+        raise ValueError("Reference CSV exceeds the 5 MB local processing limit.")
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Reference CSV must be UTF-8 encoded.") from exc
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        headers = [str(header or "").strip() for header in (reader.fieldnames or [])]
+        normalized = {normalize_name(header): header for header in headers if header}
+        required = {normalize_name(code_field), "unit"}
+        missing = [name for name in required if name not in normalized]
+        if missing:
+            raise ValueError(f"Reference CSV is missing required columns: {', '.join(sorted(missing))}")
+        rows = [{str(k or "").strip(): str(v or "").strip() for k, v in row.items()} for row in reader]
+    except csv.Error as exc:
+        raise ValueError(f"Reference CSV could not be read: {exc}") from exc
+    if not rows:
+        raise ValueError("Reference CSV has a header but no reference rows.")
+    return rows
 
 
 def build_reference_index(rows: Iterable[dict[str, Any]], code_field: str, unit_field: str = "unit") -> dict[str, dict[str, str]]:
@@ -29,6 +58,8 @@ def build_reference_index(rows: Iterable[dict[str, Any]], code_field: str, unit_
             "description": str(row.get("description", "") or "").strip(),
             "unit": str(row.get(unit_field, "") or "").strip(),
         }
+    if not index:
+        raise ValueError(f"Reference contains no nonblank {code_field} values.")
     return index
 
 
@@ -62,6 +93,21 @@ def validate_code(code: Any, unit: Any, reference_index: dict[str, dict[str, str
     }
 
 
+def canonicalize_export_rows(
+    sheets: dict[str, list[dict[str, str]]], mappings: dict[str, dict[str, str]]
+) -> list[dict[str, str]]:
+    """Create non-mutating canonical rows from the same explicit mappings used by the audit."""
+    rows: list[dict[str, str]] = []
+    for sheet, source_rows in sheets.items():
+        mapping = mappings.get(sheet, {})
+        for position, source in enumerate(source_rows, start=2):
+            canonical = {field: source.get(column, "") for field, column in mapping.items() if column}
+            canonical["__source_row"] = source.get("__source_row", str(position))
+            canonical["__sheet"] = sheet
+            rows.append(canonical)
+    return rows
+
+
 def validate_export_rows(
     rows: Iterable[dict[str, Any]],
     activity_reference: dict[str, dict[str, str]] | None = None,
@@ -71,13 +117,14 @@ def validate_export_rows(
     results: list[dict[str, Any]] = []
     for position, row in enumerate(rows, start=1):
         source_row = int(row.get("__source_row", position))
+        sheet = str(row.get("__sheet", ""))
         unit = row.get("unit", row.get("Unit", ""))
         if activity_reference is not None:
             activity_code = row.get("activity", row.get("Activity Code", ""))
             check = validate_code(activity_code, unit, activity_reference)
-            results.append({"source_row": source_row, "reference_type": "activity", **check})
+            results.append({"sheet": sheet, "source_row": source_row, "reference_type": "activity", **check})
         if resource_reference is not None:
             resource_code = row.get("resource_code", row.get("Resource Code", ""))
             check = validate_code(resource_code, unit, resource_reference)
-            results.append({"source_row": source_row, "reference_type": "resource", **check})
+            results.append({"sheet": sheet, "source_row": source_row, "reference_type": "resource", **check})
     return results
