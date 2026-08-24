@@ -1,0 +1,23 @@
+Bid Item,Activity Code,Resource Type,Resource Code,Resource Description,Quantity,Unit,Rate,Amount,Category
+100,MOB,Subcontract,SC-MOB,Mobilization,1,LS,25000,25000,General
+200,EXC,Equipment,EQ-EXC20,Excavator 20T,50,HR,185,9250,Equipment
+200,EXC,Equipment,EQ-DZR,Dozer,40,HRS,195,7800,Equipment
+200,EXC,Equipment,EQ-LDR,Loader,35,Hours,205,7175,Equipment
+200,EXC,Equipment,EQ-GRD,Grader,20,Hour,2600,52000,Equipment
+200,EXC,Labour,L-OP,Operator,120,HR,58,6960,Labour
+200,EXC,Material,M-COMMON,Common excavation,1000,BCY,12.5,12500,Earthworks
+200,HAUL,Material,M-HAUL,Export haul,1250,LCY,8.5,10625,Earthworks
+300,STM300,Material,M-PVC300,300mm PVC storm pipe,400,M,78,31200,Material
+300,STM300,Labour,L-PIPE,Pipe layer,80,HR,52,4160,Labour
+300,STM300,Equipment,EQ-EXC20,Excavator 20T,80,HR,185,14800,Equipment
+400,SAN200,Material,M-PVC200,200mm PVC sanitary pipe,300,M,64,19200,Material
+400,SAN200,Labour,L-PIPE,Pipe layer,60,HR,52,3120,Labour
+500,WAT200,Material,M-DI200,200mm DI watermain pipe,350,M,115,40250,Material
+500,WAT200,Labour,L-PIPE,Pipe layer,70,HR,52,3640,Labour
+600,RB19,Material,M-RB19,19mm road base,800,TON,28,22400,Material
+600,RB19,Equipment,EQ-ROLLER,Compactor roller,18,HR,165,2970,Equipment
+700,CURB,Subcontract,SC-CURB,Concrete curb and gutter,600,M,72,43200,Subcontract
+800,QA-DUP,Material,M-QA,Granular base,100,TON,30,3000,Material
+800,QA-DUP,Material,M-QA,Granular base,100,TON,30,3000,Material
+810,QA-EXT,Material,M-QA2,Concrete,2,M3,150,500,Material
+820,QA-ZERO,Subcontract,SC-ZERO,Allowance placeholder,0,LS,0,0,General

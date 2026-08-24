@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 from audit_engine import InputError, OPTIONAL_FIELDS, REQUIRED_FIELDS, audit, column_map, findings_csv, management_summary_html, parse_upload
+from heavybid_adapter import PROFILE_HEAVYBID_STYLE_RESOURCE_EXPORT, detect_heavybid_style_export, map_heavybid_style_headers
 
 
 HOST = "127.0.0.1"
@@ -78,11 +79,22 @@ def read_uploaded_file(handler: BaseHTTPRequestHandler) -> tuple[str, bytes]:
     raise InputError("Choose a CSV or XLSX file before continuing.")
 
 
+def detected_mapping(headers: list[str]) -> tuple[dict[str, str], str | None]:
+    """Return preselected mapping plus an optional recognized profile label."""
+    generic = column_map(headers)
+    if not detect_heavybid_style_export(headers):
+        return generic, None
+    profile_mapping = map_heavybid_style_headers(headers)
+    merged = dict(generic)
+    merged.update(profile_mapping)
+    return merged, PROFILE_HEAVYBID_STYLE_RESOURCE_EXPORT
+
+
 def mapping_page(token: str, session: dict) -> bytes:
     blocks: list[str] = []
     for sheet, rows in session["sheets"].items():
         headers = [header for header in rows[0] if not header.startswith("__")]
-        detected = column_map(headers)
+        detected, profile = detected_mapping(headers)
         can_auto_include = all(detected.get(field) for field in REQUIRED_FIELDS)
         sample_rows = rows[:3]
         selects: list[str] = []
@@ -92,7 +104,10 @@ def mapping_page(token: str, session: dict) -> bytes:
         preview_head = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
         preview_rows = "".join("<tr>" + "".join(f"<td>{html.escape(row.get(header, ''))}</td>" for header in headers) + "</tr>" for row in sample_rows)
         include = " checked" if can_auto_include else ""
-        blocks.append(f"<section class='card'><h2>Sheet: {html.escape(sheet)}</h2><p><label><input type='checkbox' name='include__{quote(sheet, safe='')}' value='1'{include}> Include this sheet in the audit</label></p><p>Map fields marked * for each included sheet. Sheets such as cover pages can remain excluded. Detected columns are preselected.</p><div style='display:flex;gap:1rem;flex-wrap:wrap'>{''.join(selects)}</div><h3>Preview (first {len(sample_rows)} rows)</h3><div style='overflow:auto'><table><thead><tr>{preview_head}</tr></thead><tbody>{preview_rows}</tbody></table></div></section>")
+        profile_note = ""
+        if profile:
+            profile_note = "<div class='notice'><strong>Structured resource-export profile recognized.</strong> HeavyBid-style header mapping was preselected using exact supported aliases only. Review or override every mapping before audit.</div>"
+        blocks.append(f"<section class='card'><h2>Sheet: {html.escape(sheet)}</h2>{profile_note}<p><label><input type='checkbox' name='include__{quote(sheet, safe='')}' value='1'{include}> Include this sheet in the audit</label></p><p>Map fields marked * for each included sheet. Sheets such as cover pages can remain excluded. Detected columns are preselected and remain editable.</p><div style='display:flex;gap:1rem;flex-wrap:wrap'>{''.join(selects)}</div><h3>Preview (first {len(sample_rows)} rows)</h3><div style='overflow:auto'><table><thead><tr>{preview_head}</tr></thead><tbody>{preview_rows}</tbody></table></div></section>")
     return page("Map columns", f"<form action='/audit' method='post'><input type='hidden' name='token' value='{token}'>{''.join(blocks)}<p><button type='submit'>Run deterministic audit</button> <a href='/'>Cancel</a></p></form>")
 
 
@@ -184,7 +199,6 @@ class Handler(BaseHTTPRequestHandler):
                     if form.get(f"include__{encoded}", [""])[0] == "1":
                         selected[sheet] = rows
                 if not selected:
-                    # Preserve direct integration/test behavior: complete mappings can select a sheet without a browser checkbox.
                     selected = {
                         sheet: rows
                         for sheet, rows in session["sheets"].items()
