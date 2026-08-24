@@ -8,7 +8,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 
-from reference_validation import build_reference_index, validate_code, validate_export_rows
+from reference_validation import (
+    build_reference_index,
+    canonicalize_export_rows,
+    parse_reference_csv,
+    validate_code,
+    validate_export_rows,
+)
 
 
 class GovernedReferenceValidationTests(unittest.TestCase):
@@ -50,6 +56,10 @@ class GovernedReferenceValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Duplicate reference code"):
             build_reference_index(rows, "resource_code")
 
+    def test_empty_reference_index_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "no nonblank resource_code"):
+            build_reference_index([{"resource_code": "", "unit": "HR"}], "resource_code")
+
     def test_row_linked_validation_does_not_mutate_source(self):
         rows = [{"__source_row": "42", "Activity Code": "STM300", "Resource Code": "M-PVC300", "Unit": "M"}]
         original = dict(rows[0])
@@ -69,6 +79,31 @@ class GovernedReferenceValidationTests(unittest.TestCase):
         index = build_reference_index(rows, "resource_code")
         self.assertEqual(validate_code("EARTH", "LCY", index)["status"], "UNIT_MISMATCH")
         self.assertEqual(validate_code("MASS", "tonne", index)["status"], "UNIT_MISMATCH")
+
+    def test_reference_csv_requires_explicit_code_and_unit_headers(self):
+        good = b"resource_code,description,unit\nEQ-1,Excavator,HR\n"
+        rows = parse_reference_csv(good, "resource_code")
+        self.assertEqual(rows[0]["resource_code"], "EQ-1")
+        with self.assertRaisesRegex(ValueError, "missing required columns"):
+            parse_reference_csv(b"description,unit\nExcavator,HR\n", "resource_code")
+
+    def test_reference_csv_rejects_blank_and_header_only_files(self):
+        with self.assertRaisesRegex(ValueError, "blank"):
+            parse_reference_csv(b"", "activity_code")
+        with self.assertRaisesRegex(ValueError, "no reference rows"):
+            parse_reference_csv(b"activity_code,unit\n", "activity_code")
+
+    def test_canonicalize_export_rows_uses_explicit_audit_mapping(self):
+        sheets = {"Estimate": [{
+            "Activity Code": "STM300", "Resource Code": "M-PVC300", "UOM": "M", "__source_row": "17"
+        }]}
+        mappings = {"Estimate": {"activity": "Activity Code", "resource_code": "Resource Code", "unit": "UOM"}}
+        canonical = canonicalize_export_rows(sheets, mappings)
+        self.assertEqual(canonical[0]["activity"], "STM300")
+        self.assertEqual(canonical[0]["resource_code"], "M-PVC300")
+        self.assertEqual(canonical[0]["unit"], "M")
+        self.assertEqual(canonical[0]["__source_row"], "17")
+        self.assertEqual(canonical[0]["__sheet"], "Estimate")
 
 
 if __name__ == "__main__":
