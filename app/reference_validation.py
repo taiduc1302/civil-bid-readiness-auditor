@@ -31,11 +31,21 @@ def parse_reference_csv(data: bytes, code_field: str) -> list[dict[str, str]]:
         reader = csv.DictReader(io.StringIO(text))
         headers = [str(header or "").strip() for header in (reader.fieldnames or [])]
         normalized = {normalize_name(header): header for header in headers if header}
-        required = {normalize_name(code_field), "unit"}
+        code_key = normalize_name(code_field)
+        required = {code_key, "unit"}
         missing = [name for name in required if name not in normalized]
         if missing:
             raise ValueError(f"Reference CSV is missing required columns: {', '.join(sorted(missing))}")
-        rows = [{str(k or "").strip(): str(v or "").strip() for k, v in row.items()} for row in reader]
+        code_header = normalized[code_key]
+        unit_header = normalized["unit"]
+        description_header = normalized.get("description")
+        rows = []
+        for row in reader:
+            rows.append({
+                code_field: str(row.get(code_header, "") or "").strip(),
+                "description": str(row.get(description_header, "") or "").strip() if description_header else "",
+                "unit": str(row.get(unit_header, "") or "").strip(),
+            })
     except csv.Error as exc:
         raise ValueError(f"Reference CSV could not be read: {exc}") from exc
     if not rows:
