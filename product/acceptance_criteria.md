@@ -22,3 +22,10 @@
 | AC-18 | A fictional hierarchical civil estimate fixture exercises Bid Item / Activity / Resource context, safe UOM normalization, duplicate detection, extension mismatch, zero placeholders, and peer-relative rate outliers without using live company/project data. |
 | AC-19 | A named structured-civil export profile maps known source headers into canonical fields deterministically and leaves missing/unknown columns unmapped rather than guessing values. |
 | AC-20 | Export profiles remain a thin adapter layer: they do not infer quantities, rates, units, resource classes, codes, or company-specific codebook values. |
+| AC-21 | The HeavyBid-style resource-export adapter activates only when its required hierarchy/resource header signature is unambiguous; mapping is exact/case-insensitive/whitespace-normalized and non-fuzzy. |
+| AC-22 | Human finding dispositions support `Open`, `Reviewed`, `Accepted`, `Needs correction`, and `Suppressed`; suppression requires a reason and invalid review updates fail closed without partial mutation. |
+| AC-23 | Human dispositions remain separate from deterministic findings: they do not alter source estimate values, rule output, severity counts, or the legacy score. |
+| AC-24 | Review-state CSV export preserves original finding evidence plus human status/reason and protects formula-like text from spreadsheet execution. |
+| AC-25 | Explicitly supplied Activity/Resource reference CSVs are validated by exact code against a governed snapshot and report `MATCH`, `UNIT_MISMATCH`, `NO_MATCH`, or `NOT_CHECKED` while preserving source row/sheet linkage. |
+| AC-26 | Governed reference validation rejects duplicate reference codes, missing required reference columns, and empty/header-only reference files; it never proposes replacement codes or performs physical unit conversion. |
+| AC-27 | A successful governed-reference match does not imply HeavyBid import validity. Any future HeavyBid-readable output must retain `HEAVYBID_IMPORT_VALIDATED=false` until a real independent test import is reviewed. |
