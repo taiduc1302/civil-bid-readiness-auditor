@@ -32,7 +32,8 @@ def package_manifest(session: dict[str, Any]) -> dict[str, Any]:
     result = session["result"]
     dispositions = session.get("dispositions", {})
     reference_results = session.get("reference_results", [])
-    reference_metadata = [dict(item) for item in session.get("reference_metadata", [])]
+    reference_metadata = [dict(item) for item in session.get("reference_metadata", [])] if reference_results else []
+    reference_sources = list(session.get("reference_sources", [])) if reference_results else []
     return {
         "package_format": PACKAGE_FORMAT,
         "package_version": PACKAGE_VERSION,
@@ -44,7 +45,7 @@ def package_manifest(session: dict[str, Any]) -> dict[str, Any]:
         "review_metrics": result.get("review_metrics", {}),
         "review_status_counts": review_metrics(result, dispositions),
         "reference_status_counts": dict(sorted(Counter(item.get("status", "") for item in reference_results if item.get("status")).items())),
-        "reference_sources": list(session.get("reference_sources", [])),
+        "reference_sources": reference_sources,
         "reference_metadata": reference_metadata,
         "contents": {
             "original_estimate_bytes_included": False,
