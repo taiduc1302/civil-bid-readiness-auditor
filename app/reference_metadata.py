@@ -39,10 +39,15 @@ def metadata_by_role(metadata: list[dict[str, Any]] | None) -> dict[str, dict[st
     return result
 
 
+def _safe_csv(value: Any) -> str:
+    text = str(value)
+    return "'" + text if text.lstrip().startswith(("=", "+", "-", "@")) else text
+
+
 def reference_review_csv(reference_results: list[dict[str, Any]], metadata: list[dict[str, Any]] | None = None) -> bytes:
-    """Export reference checks with the evidence metadata used for each role."""
+    """Export reference checks with role-linked evidence metadata and sheet linkage."""
     fields = [
-        "source_row", "reference_type", "status", "code", "reference_code", "reference_unit", "message",
+        "sheet", "source_row", "reference_type", "status", "code", "reference_code", "reference_unit", "message",
         "reference_filename", "reference_revision", "reference_size_bytes", "reference_sha256", "authority_status",
     ]
     by_role = metadata_by_role(metadata)
@@ -60,5 +65,5 @@ def reference_review_csv(reference_results: list[dict[str, Any]], metadata: list
             "reference_sha256": meta.get("sha256", ""),
             "authority_status": meta.get("authority_status", ""),
         })
-        writer.writerow(row)
+        writer.writerow({field: _safe_csv(row.get(field, "")) for field in fields})
     return output.getvalue().encode("utf-8")
