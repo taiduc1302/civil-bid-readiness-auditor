@@ -58,7 +58,7 @@ class ServerReviewTests(unittest.TestCase):
     def test_results_page_exposes_review_controls(self):
         token, body = self.audited_sample()
         self.assertIn(b"Findings review", body)
-        self.assertIn(b"Save review states", body)
+        self.assertIn(b"Save visible review states", body)
         self.assertIn(b"Download review CSV", body)
         self.assertIn(b"status__1", body)
         self.assertIn(b"Open", body)
