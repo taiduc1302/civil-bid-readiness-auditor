@@ -1,8 +1,8 @@
 """Public server entrypoint with Civil Estimate Review Auditor review UX.
 
 The tested runtime remains in ``server_legacy``. This wrapper adds the public
-product title plus presentation-only results filtering/navigation without
-changing deterministic findings or review-state semantics.
+product title, presentation-only filtering/navigation, and explicit in-memory
+review-package export without changing deterministic findings or review state.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import server_legacy as _server
 from server_legacy import *  # noqa: F401,F403 - compatibility re-export
 from review_filters import SEVERITY_FILTERS, filter_findings, filter_options
+from review_package import build_review_package
 
 _LEGACY_TITLE = b"Civil Bid Readiness Auditor"
 _PUBLIC_TITLE = b"Civil Estimate Review Auditor"
@@ -99,7 +100,7 @@ def findings_page(token: str, session: dict, message: str = "", filters: dict[st
     alert = f"<div class='notice'>{html.escape(message)}</div>" if message else ""
     review_summary = " | ".join(f"{html.escape(status)}: {disposition_counts[status]}" for status in REVIEW_STATUSES)
     controls = _filter_controls(token, result, filters, len(visible_findings))
-    return _server.page("Audit results", f"""{alert}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section>{controls}<section class='card' id='findings'><h2>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save visible review states</button> <a href='#filters'>Back to filters</a></p></form></section>{_server._reference_panel(token, session)}""")
+    return _server.page("Audit results", f"""{alert}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/package?token={token}'>Download review package ZIP</a> <a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section>{controls}<section class='card' id='findings'><h2>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save visible review states</button> <a href='#filters'>Back to filters</a></p></form></section>{_server._reference_panel(token, session)}""")
 
 
 _server.findings_page = findings_page
@@ -108,6 +109,21 @@ _server.findings_page = findings_page
 class Handler(_server.Handler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/export/package":
+            _server.expire_sessions()
+            token = parse_qs(parsed.query).get("token", [""])[0]
+            session = SESSIONS.get(token)
+            if not session or "result" not in session:
+                self.send_html(home("This temporary audit session is no longer available. Upload the file again."), HTTPStatus.NOT_FOUND)
+                return
+            content, filename = build_review_package(session)
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
         if parsed.path == "/results":
             _server.expire_sessions()
             query = parse_qs(parsed.query, keep_blank_values=True)
