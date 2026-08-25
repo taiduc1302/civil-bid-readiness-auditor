@@ -37,20 +37,28 @@ class ReferenceMetadataTests(unittest.TestCase):
         self.assertEqual(set(indexed), {"activity", "resource"})
         self.assertEqual(indexed["activity"]["revision"], "R1")
 
-    def test_reference_review_csv_attaches_metadata_by_role(self):
+    def test_reference_review_csv_attaches_metadata_by_role_and_sheet(self):
         checks = [
-            {"source_row": 2, "reference_type": "activity", "status": "MATCH", "code": "A-1", "reference_code": "A-1", "reference_unit": "EA", "message": "Exact governed reference match."},
-            {"source_row": 3, "reference_type": "resource", "status": "NO_MATCH", "code": "M-1", "reference_code": "", "reference_unit": "", "message": "No match."},
+            {"sheet": "Estimate", "source_row": 2, "reference_type": "activity", "status": "MATCH", "code": "A-1", "reference_code": "A-1", "reference_unit": "EA", "message": "Exact governed reference match."},
+            {"sheet": "Estimate", "source_row": 3, "reference_type": "resource", "status": "NO_MATCH", "code": "M-1", "reference_code": "", "reference_unit": "", "message": "No match."},
         ]
         activity = build_reference_metadata("activity", "activity.csv", b"activity", "Rev A")
         data = reference_review_csv(checks, [activity])
         rows = list(csv.DictReader(io.StringIO(data.decode("utf-8"))))
+        self.assertEqual(rows[0]["sheet"], "Estimate")
         self.assertEqual(rows[0]["reference_filename"], "activity.csv")
         self.assertEqual(rows[0]["reference_revision"], "Rev A")
         self.assertEqual(rows[0]["reference_sha256"], activity["sha256"])
         self.assertEqual(rows[0]["authority_status"], "NOT_ESTABLISHED_BY_APP")
         self.assertEqual(rows[1]["reference_filename"], "")
         self.assertEqual(rows[1]["reference_revision"], "")
+
+    def test_metadata_csv_protects_formula_like_filename_and_revision(self):
+        checks = [{"sheet": "Estimate", "source_row": 2, "reference_type": "resource", "status": "MATCH", "code": "M-1", "reference_code": "M-1", "reference_unit": "EA", "message": "ok"}]
+        metadata = build_reference_metadata("resource", "=reference.csv", b"x", "+revision")
+        rows = list(csv.DictReader(io.StringIO(reference_review_csv(checks, [metadata]).decode("utf-8"))))
+        self.assertEqual(rows[0]["reference_filename"], "'=reference.csv")
+        self.assertEqual(rows[0]["reference_revision"], "'+revision")
 
 
 if __name__ == "__main__":
