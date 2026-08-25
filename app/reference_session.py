@@ -125,14 +125,14 @@ def _metadata_table(metadata: list[dict[str, Any]]) -> str:
 def reference_panel(token: str, session: dict[str, Any]) -> str:
     """Render reference upload/results UI with explicit evidence metadata fields."""
     action = f"/references?token={quote(token, safe='')}"
-    metadata = session.get("reference_metadata", [])
+    results = session.get("reference_results")
+    metadata = session.get("reference_metadata", []) if results else []
     upload_form = f"""<form action='{action}' method='post' enctype='multipart/form-data'>
 <p><label>Activity reference CSV <input type='file' name='activity_reference' accept='.csv'></label><br>
 <label>Activity revision / label <input type='text' name='activity_revision' maxlength='200' placeholder='Optional; not inferred'></label></p>
 <p><label>Resource reference CSV <input type='file' name='resource_reference' accept='.csv'></label><br>
 <label>Resource revision / label <input type='text' name='resource_revision' maxlength='200' placeholder='Optional; not inferred'></label></p>
 <p><button type='submit'>Validate against supplied references</button></p></form>"""
-    results = session.get("reference_results")
     metadata_html = _metadata_table(metadata)
     if not results:
         return (
@@ -140,7 +140,7 @@ def reference_panel(token: str, session: dict[str, Any]) -> str:
             "<p>Optional. Upload an explicitly selected Activity and/or Resource reference CSV. Required columns are "
             "<code>activity_code,unit</code> or <code>resource_code,unit</code>. Revision/label is recorded exactly as supplied and may be blank. "
             "The app does not infer reference authority, replacement codes, or unit conversions.</p>"
-            f"{metadata_html}{upload_form}</section>"
+            f"{upload_form}</section>"
         )
 
     from collections import Counter
