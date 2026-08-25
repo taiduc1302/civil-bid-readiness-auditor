@@ -11,7 +11,7 @@ from typing import Any
 
 from audit_engine import findings_csv, management_summary_html
 from finding_review import findings_review_csv, review_metrics
-from reference_validation import reference_results_csv
+from reference_metadata import reference_review_csv
 
 PACKAGE_FORMAT = "civil-estimate-review-package"
 PACKAGE_VERSION = 1
@@ -32,6 +32,7 @@ def package_manifest(session: dict[str, Any]) -> dict[str, Any]:
     result = session["result"]
     dispositions = session.get("dispositions", {})
     reference_results = session.get("reference_results", [])
+    reference_metadata = [dict(item) for item in session.get("reference_metadata", [])]
     return {
         "package_format": PACKAGE_FORMAT,
         "package_version": PACKAGE_VERSION,
@@ -44,14 +45,17 @@ def package_manifest(session: dict[str, Any]) -> dict[str, Any]:
         "review_status_counts": review_metrics(result, dispositions),
         "reference_status_counts": dict(sorted(Counter(item.get("status", "") for item in reference_results if item.get("status")).items())),
         "reference_sources": list(session.get("reference_sources", [])),
+        "reference_metadata": reference_metadata,
         "contents": {
             "original_estimate_bytes_included": False,
             "original_reference_bytes_included": False,
             "reference_checks_included": bool(reference_results),
+            "reference_metadata_included": bool(reference_metadata),
         },
         "safety": {
             "human_review_required": True,
             "bid_certified": False,
+            "reference_authority_established_by_app": False,
             "heavybid_import_attempted": False,
             "NOT_PRODUCTION_READY": True,
             "NOT_ESTIMATOR_VALIDATED": True,
@@ -82,12 +86,14 @@ def build_review_package(session: dict[str, Any]) -> tuple[bytes, str]:
         "summary.html": management_summary_html(result, str(session.get("filename", "review"))),
         "README.txt": (
             "Civil Estimate Review Auditor review package\n\n"
-            "This package is a local review snapshot. It does not certify estimate correctness, bid readiness, or HeavyBid import validity.\n"
+            "This package is a local review snapshot. It does not certify estimate correctness, bid readiness, reference authority, or HeavyBid import validity.\n"
             "Original estimate/reference file bytes are intentionally not included.\n"
         ).encode("utf-8"),
     }
     if session.get("reference_results"):
-        members["references.csv"] = reference_results_csv(session["reference_results"])
+        members["references.csv"] = reference_review_csv(
+            session["reference_results"], session.get("reference_metadata", [])
+        )
 
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as book:
