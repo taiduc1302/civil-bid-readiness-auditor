@@ -29,3 +29,10 @@
 | AC-25 | Explicitly supplied Activity/Resource reference CSVs are validated by exact code against a governed snapshot and report `MATCH`, `UNIT_MISMATCH`, `NO_MATCH`, or `NOT_CHECKED` while preserving source row/sheet linkage. |
 | AC-26 | Governed reference validation rejects duplicate reference codes, missing required reference columns, and empty/header-only reference files; it never proposes replacement codes or performs physical unit conversion. |
 | AC-27 | A successful governed-reference match does not imply HeavyBid import validity. Any future HeavyBid-readable output must retain `HEAVYBID_IMPORT_VALIDATED=false` until a real independent test import is reviewed. |
+| AC-28 | A stable temporary `/results` view filters findings by severity, review status, rule, sheet, and free text without mutating deterministic findings or dispositions. |
+| AC-29 | Review navigation reports visible/total finding counts, provides common quick views and row anchors, and fails safely for expired session tokens. |
+| AC-30 | The local review-package ZIP is generated only on explicit download from the current in-memory session and deterministically includes a manifest, findings CSV, review CSV, summary HTML, README, and reference checks only when present. |
+| AC-31 | The review package never contains original estimate/reference bytes, does not claim bid approval, and explicitly preserves `NOT_PRODUCTION_READY`, `NOT_ESTIMATOR_VALIDATED`, and `HEAVYBID_IMPORT_VALIDATED=false`. |
+| AC-32 | Governed reference upload records role, filename, user-supplied revision/label, exact byte size, and SHA-256 for the uploaded bytes; blank revision remains blank and authority is explicitly `NOT_ESTABLISHED_BY_APP`. |
+| AC-33 | Reference-check CSV and review-package manifest preserve reference metadata plus sheet/row linkage, and formula-like filename/revision text is protected from spreadsheet execution. |
+| AC-34 | Reference reruns update checks and metadata atomically: a failed replacement does not partially overwrite the previous successful reference evidence, and inactive stale metadata is excluded when current reference checks are absent. |
