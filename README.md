@@ -1,8 +1,8 @@
 # Civil Estimate Review Auditor
 
-A local-first, deterministic review tool for CSV/XLSX civil estimate exports. It builds a human-review queue for data-quality exceptions and supports optional hierarchy-aware mapping, human finding dispositions, and validation against explicitly supplied estimating reference data.
+A local-first, deterministic review tool for CSV/XLSX civil estimate exports. It builds a human-review queue for data-quality exceptions and supports hierarchy-aware mapping, human finding dispositions, governed estimating references, review filters, and a portable local review-package export.
 
-> Repository note: the GitHub repository currently retains the legacy slug `civil-bid-readiness-auditor` to avoid breaking links. The public product title is **Civil Estimate Review Auditor** because the tool performs review, not bid-readiness certification.
+> Repository note: the GitHub repository retains the legacy slug `civil-bid-readiness-auditor` to avoid breaking links. The public product title is **Civil Estimate Review Auditor** because the tool performs review, not bid-readiness certification.
 
 ## Scope
 
@@ -13,9 +13,11 @@ This is a reviewable prototype, not production-ready estimating software and not
 1. Upload a CSV/XLSX estimate export or run the synthetic sample.
 2. Review sheet selection and column mapping. Recognized HeavyBid-style resource exports may preselect supported fields using exact aliases only; mappings remain editable.
 3. Run the deterministic audit and review row-linked findings.
-4. Record temporary local finding dispositions (`Open`, `Reviewed`, `Accepted`, `Needs correction`, or `Suppressed`). Suppression requires a reason and never changes the source estimate or deterministic finding.
-5. Optionally validate explicitly supplied Activity/Resource codes and units against governed reference data. Optional Crew Code / Production Rate comparison is evidence-only and runs only when those values are explicitly present on both sides.
-6. Export findings, review-state CSV, reference-check CSV, or the printable management summary.
+4. Navigate the temporary results session with filters for severity, review status, rule, sheet, or free text. Quick views include Priority, Open, Needs correction, and Suppressed. Filtering changes only the view.
+5. Record temporary local finding dispositions (`Open`, `Reviewed`, `Accepted`, `Needs correction`, or `Suppressed`). Suppression requires a reason and never changes the source estimate or deterministic finding.
+6. Optionally validate explicitly supplied Activity/Resource codes and units against governed reference data. A user-supplied revision/label, filename, byte size, and SHA-256 are recorded as evidence; the app does not infer reference authority.
+7. Optional Crew Code / Production Rate comparison is evidence-only and runs only when those values are explicitly present on both sides.
+8. Export individual CSV/HTML reports or download one deterministic ZIP review package containing the manifest, findings, review states, summary, and reference checks when present. Original estimate/reference bytes are intentionally excluded.
 
 ## Run locally
 
@@ -32,7 +34,7 @@ Then open `http://127.0.0.1:8765`. The server binds only to the local machine; u
 
 The repository includes a controlled **HeavyBid-style** flat export adapter, not a direct HeavyBid database/API integration. It never invents Bid Item, Activity, Resource, Crew, Production, Rate, or Quantity values. Governed reference matching is separate from import validation.
 
-The codebase now includes controlled gates for output eligibility, versioned create-new-only planning, and immediate pre-write source/schema hash revalidation. It still does **not** contain a HeavyBid candidate workbook writer. Any future HeavyBid-readable output must remain `HEAVYBID_IMPORT_VALIDATED=false` until a real independent test import is completed and reviewed.
+The codebase includes controlled gates for output eligibility, versioned create-new-only planning, and immediate pre-write source/schema hash revalidation. It still does **not** contain a HeavyBid candidate workbook writer. Any future HeavyBid-readable output must remain `HEAVYBID_IMPORT_VALIDATED=false` until a real independent test import is completed and reviewed.
 
 ## Data and privacy
 
