@@ -82,7 +82,7 @@ class ServerFilterTests(unittest.TestCase):
 
     def test_text_search_filters_visible_rows(self):
         token = self.audited_sample()
-        status, body = self.request("GET", f"/results?token={token}&q=outlier")
+        status, body = self.request("GET", f"/results?token={token}&q=R015")
         self.assertEqual(status, 200)
         visible = re.search(rb"Visible:</strong> (\d+) of 14 findings", body)
         self.assertIsNotNone(visible)
