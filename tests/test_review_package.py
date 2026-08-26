@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "app"))
 
 from audit_engine import audit, parse_upload
 from finding_review import default_dispositions, set_disposition
-from review_package import build_review_package, package_manifest
+from review_package import build_review_package, package_manifest, verify_review_package
 
 
 class ReviewPackageTests(unittest.TestCase):
@@ -40,16 +40,29 @@ class ReviewPackageTests(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(first)) as book:
             self.assertEqual(
                 set(book.namelist()),
-                {"README.txt", "findings.csv", "manifest.json", "review.csv", "summary.html"},
+                {"README.txt", "findings.csv", "integrity.json", "manifest.json", "review.csv", "summary.html"},
             )
             manifest = json.loads(book.read("manifest.json"))
+            integrity = json.loads(book.read("integrity.json"))
             self.assertEqual(manifest["package_format"], "civil-estimate-review-package")
             self.assertEqual(manifest["package_version"], 1)
+            self.assertTrue(manifest["contents"]["integrity_metadata_included"])
             self.assertFalse(manifest["contents"]["original_estimate_bytes_included"])
             self.assertFalse(manifest["contents"]["original_reference_bytes_included"])
             self.assertFalse(manifest["safety"]["HEAVYBID_IMPORT_VALIDATED"])
+            self.assertEqual(integrity["integrity_format"], "civil-estimate-review-package-integrity")
+            self.assertEqual(integrity["integrity_version"], 1)
+            self.assertNotIn("integrity.json", integrity["members"])
+            self.assertEqual(set(integrity["members"]), set(book.namelist()) - {"integrity.json"})
             self.assertIn(b"Reviewed", book.read("review.csv"))
             self.assertIn(b"Required human review", book.read("summary.html"))
+
+        verified = verify_review_package(first)
+        self.assertTrue(verified["valid"])
+        self.assertFalse(verified["session_restored"])
+        self.assertFalse(verified["approval_inferred"])
+        self.assertFalse(verified["heavybid_import_validated"])
+        self.assertEqual(verified["members_verified"], 5)
 
     def test_reference_checks_are_included_only_when_present(self):
         session = self.session()
@@ -69,6 +82,9 @@ class ReviewPackageTests(unittest.TestCase):
             manifest = json.loads(book.read("manifest.json"))
             self.assertTrue(manifest["contents"]["reference_checks_included"])
             self.assertEqual(manifest["reference_status_counts"], {"NO_MATCH": 1})
+        verified = verify_review_package(data)
+        self.assertTrue(verified["reference_checks_included"])
+        self.assertEqual(verified["members_verified"], 6)
 
     def test_manifest_requires_no_heavybid_claims(self):
         manifest = package_manifest(self.session())
