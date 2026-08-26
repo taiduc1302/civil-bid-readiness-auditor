@@ -2,8 +2,8 @@
 
 The tested runtime remains in ``server_legacy``. This wrapper adds the public
 product title, presentation-only finding/reference review views, review
-attention guidance, explicit in-memory review-package export, governed
-reference evidence metadata, and a fictional onboarding guide without
+attention guidance, explicit in-memory review-package export and verification,
+governed reference evidence metadata, and a fictional onboarding guide without
 changing deterministic audit/reference semantics.
 """
 from __future__ import annotations
@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import server_legacy as _server
 from server_legacy import *  # noqa: F401,F403 - compatibility re-export
 from onboarding import guide_body
+from package_verification import read_package_upload, verification_page_body
 from reference_metadata import reference_review_csv
 from reference_session import parse_reference_multipart, reference_panel, validate_reference_submission
 from review_filters import (
@@ -27,7 +28,7 @@ from review_filters import (
     sort_findings,
 )
 from review_guidance import review_attention_summary
-from review_package import build_review_package
+from review_package import build_review_package, verify_review_package
 
 _LEGACY_TITLE = b"Civil Bid Readiness Auditor"
 _PUBLIC_TITLE = b"Civil Estimate Review Auditor"
@@ -46,12 +47,19 @@ caption{text-align:left;font-weight:bold;padding:8px 0}
 
 def home(message: str = "") -> bytes:
     content = _original_home(message).replace(_LEGACY_TITLE, _PUBLIC_TITLE)
-    guide_card = b"<section class='card'><h2>New here?</h2><p>Use a fictional walkthrough to learn mapping, review views, dispositions, governed reference evidence, and review-package export without using live project data.</p><p><a class='button' href='/guide'>Open fictional onboarding walkthrough</a></p></section>"
-    return content.replace(b"</main>", guide_card + b"</main>", 1)
+    extra = b"""
+<section class='card'><h2>New here?</h2><p>Use a fictional walkthrough to learn mapping, review views, dispositions, governed reference evidence, and review-package export without using live project data.</p><p><a class='button' href='/guide'>Open fictional onboarding walkthrough</a></p></section>
+<section class='card'><h2>Verify a review package</h2><p>Check a previously exported review-package ZIP for recorded structure and SHA-256 integrity. Verification is read-only and does not restore a session.</p><p><a class='button' href='/verify-package'>Verify review package ZIP</a></p></section>
+"""
+    return content.replace(b"</main>", extra + b"</main>", 1)
 
 
 def guide_page() -> bytes:
     return _server.page("Fictional onboarding walkthrough", guide_body())
+
+
+def package_verification_page(result: dict | None = None, filename: str = "", error: str = "") -> bytes:
+    return _server.page("Review package verification", verification_page_body(result, filename, error))
 
 
 _server.home = home
@@ -237,6 +245,9 @@ class Handler(_server.Handler):
         if parsed.path == "/guide":
             self.send_html(guide_page())
             return
+        if parsed.path == "/verify-package":
+            self.send_html(package_verification_page())
+            return
         if parsed.path == "/export/references":
             _server.expire_sessions()
             token = parse_qs(parsed.query).get("token", [""])[0]
@@ -296,6 +307,15 @@ class Handler(_server.Handler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/verify-package":
+            try:
+                message = _server._multipart_message(self)
+                filename, payload = read_package_upload(message)
+                verified = verify_review_package(payload)
+                self.send_html(package_verification_page(verified, filename))
+            except (InputError, ValueError) as exc:
+                self.send_html(package_verification_page(error=str(exc)), HTTPStatus.BAD_REQUEST)
+            return
         if parsed.path == "/references":
             _server.expire_sessions()
             try:
