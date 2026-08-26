@@ -10,7 +10,7 @@ This is a reviewable prototype, not production-ready estimating software and not
 
 ## Current workflow
 
-1. Upload a CSV/XLSX estimate export or run the synthetic sample. New users can open the local **Fictional onboarding walkthrough** from the home page; the matching written walkthrough is in `product/onboarding_walkthrough.md`.
+1. Upload a CSV/XLSX estimate export or run the synthetic sample. New users can open the local **Fictional onboarding walkthrough**. The guide also provides a one-click structured fictional estimate plus direct downloads for the two bundled fictional Activity/Resource reference CSVs; references are never auto-applied.
 2. Review sheet selection and column mapping. Recognized HeavyBid-style resource exports may preselect supported fields using exact aliases only; mappings remain editable.
 3. Run the deterministic audit and review row-linked findings.
 4. Use the **Review attention summary** to see current Open findings, Needs correction findings, and governed reference exceptions. These are attention counts only: zero values never imply estimator approval, reference authority, or bid readiness.
@@ -43,7 +43,7 @@ The codebase includes controlled gates for output eligibility, versioned create-
 
 ## Data and privacy
 
-All bundled examples and reference fixtures are fictional and synthetic. Do not use confidential employer, client, supplier, or project data without appropriate authority.
+All bundled examples, structured demo inputs, and reference fixtures are fictional and synthetic. Do not use confidential employer, client, supplier, or project data without appropriate authority.
 
 ## Public snapshot boundary
 
