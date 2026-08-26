@@ -1,6 +1,6 @@
 # Civil Estimate Review Auditor
 
-A local-first, deterministic review tool for CSV/XLSX civil estimate exports. It builds a human-review queue for data-quality exceptions and supports hierarchy-aware mapping, human finding dispositions, governed estimating references, review filters, and a portable local review-package export.
+A local-first, deterministic review tool for CSV/XLSX civil estimate exports. It builds a human-review queue for data-quality exceptions and supports hierarchy-aware mapping, human finding dispositions, governed estimating references, review views, and a portable local review-package export.
 
 > Repository note: the GitHub repository retains the legacy slug `civil-bid-readiness-auditor` to avoid breaking links. The public product title is **Civil Estimate Review Auditor** because the tool performs review, not bid-readiness certification.
 
@@ -10,14 +10,15 @@ This is a reviewable prototype, not production-ready estimating software and not
 
 ## Current workflow
 
-1. Upload a CSV/XLSX estimate export or run the synthetic sample.
+1. Upload a CSV/XLSX estimate export or run the synthetic sample. New users can open the local **Fictional onboarding walkthrough** from the home page; the matching written walkthrough is in `product/onboarding_walkthrough.md`.
 2. Review sheet selection and column mapping. Recognized HeavyBid-style resource exports may preselect supported fields using exact aliases only; mappings remain editable.
 3. Run the deterministic audit and review row-linked findings.
-4. Navigate the temporary results session with filters for severity, review status, rule, sheet, or free text. Quick views include Priority, Open, Needs correction, and Suppressed. Filtering changes only the view.
-5. Record temporary local finding dispositions (`Open`, `Reviewed`, `Accepted`, `Needs correction`, or `Suppressed`). Suppression requires a reason and never changes the source estimate or deterministic finding.
-6. Optionally validate explicitly supplied Activity/Resource codes and units against governed reference data. A user-supplied revision/label, filename, byte size, and SHA-256 are recorded as evidence; the app does not infer reference authority.
-7. Optional Crew Code / Production Rate comparison is evidence-only and runs only when those values are explicitly present on both sides.
-8. Export individual CSV/HTML reports or download one deterministic ZIP review package containing the manifest, findings, review states, summary, and reference checks when present. Original estimate/reference bytes are intentionally excluded.
+4. Navigate the temporary results session with filters for severity, review status, rule, sheet, or free text. Sort by priority, source, rule, sheet, or review status; optionally group by sheet, rule, or review status. Quick views include Priority, Open, Needs correction, and Suppressed. These controls change only the presentation view.
+5. Use the keyboard-friendly skip links and explicit focus targets to move between filters, findings, and references.
+6. Record temporary local finding dispositions (`Open`, `Reviewed`, `Accepted`, `Needs correction`, or `Suppressed`). Suppression requires a reason and never changes the source estimate or deterministic finding.
+7. Optionally validate explicitly supplied Activity/Resource codes and units against governed reference data. A user-supplied revision/label, filename, byte size, and SHA-256 are recorded as evidence; the app does not infer reference authority.
+8. Optional Crew Code / Production Rate comparison is evidence-only and runs only when those values are explicitly present on both sides.
+9. Export individual CSV/HTML reports or download one deterministic ZIP review package containing the manifest, findings, review states, summary, and reference checks when present. Original estimate/reference bytes are intentionally excluded.
 
 ## Run locally
 
