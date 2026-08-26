@@ -27,11 +27,12 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 17. Presentation-only governed reference result views: Exceptions by default, status/type filters, metadata-aware search, deterministic sort by status/source/code/type, optional grouping by status/type, and composed `/results` state with findings views.
 18. Optional evidence-only Crew Code / Production Rate comparison when values are explicit on both source and approved reference.
 19. Local fictional onboarding walkthrough covering mapping, review views, dispositions, governed reference evidence, and review-package export using bundled training data only.
-20. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
-21. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
-22. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
-23. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity, and control-gate fixtures with regression coverage.
-24. GitHub Actions test matrix on supported Python versions.
+20. Fixed one-click fictional structured demo kit: exactly one bundled HeavyBid-style synthetic estimate plus fixed Activity/Resource reference-download routes; references remain manual and are never auto-applied.
+21. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
+22. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
+23. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
+24. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity, and control-gate fixtures with regression coverage.
+25. GitHub Actions test matrix on supported Python versions.
 
 ## Next product milestone
 
@@ -39,9 +40,9 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 
 - define any future review-package re-open/state-restoration workflow only after an explicit version/migration/ownership contract; package integrity verification and the read-only verification screen are built, session restoration is not;
 - consider carefully constrained bulk review actions only with explicit human ownership and fail-closed validation;
-- add clearer first-run hints around optional governed reference workflows without implying authority;
 - continue accessibility review for semantics beyond the current keyboard/focus pass;
-- evaluate whether a compact per-group summary improves large review sessions without hiding individual evidence rows.
+- evaluate whether a compact per-group summary improves large review sessions without hiding individual evidence rows;
+- evaluate additional fictional first-run guidance only when it demonstrates already-built behavior rather than implying reference authority or automatic decisions.
 
 ### P2 — governed estimating references
 
