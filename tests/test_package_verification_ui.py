@@ -44,14 +44,14 @@ class PackageVerificationUiTests(unittest.TestCase):
     def multipart(self, filename: str | None, payload: bytes = b""):
         boundary = "----package-verification-boundary"
         chunks: list[bytes] = []
-        if filename is not None:
-            chunks.append(f"--{boundary}\r\n".encode())
-            chunks.append(
-                f'Content-Disposition: form-data; name="review_package"; filename="{filename}"\r\n'.encode()
-            )
-            chunks.append(b"Content-Type: application/zip\r\n\r\n")
-            chunks.append(payload)
-            chunks.append(b"\r\n")
+        browser_filename = filename if filename is not None else ""
+        chunks.append(f"--{boundary}\r\n".encode())
+        chunks.append(
+            f'Content-Disposition: form-data; name="review_package"; filename="{browser_filename}"\r\n'.encode()
+        )
+        chunks.append(b"Content-Type: application/zip\r\n\r\n")
+        chunks.append(payload if filename is not None else b"")
+        chunks.append(b"\r\n")
         chunks.append(f"--{boundary}--\r\n".encode())
         body = b"".join(chunks)
         return body, {
