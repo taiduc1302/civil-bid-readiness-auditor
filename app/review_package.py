@@ -144,10 +144,18 @@ def _validate_member_name(name: str) -> None:
         raise ValueError(f"Review package contains an unsafe member path: {name}")
 
 
+def _read_member(book: zipfile.ZipFile, name: str) -> bytes:
+    """Read one ZIP member while converting corruption/codec errors to a controlled failure."""
+    try:
+        return book.read(name)
+    except (zipfile.BadZipFile, RuntimeError, KeyError, NotImplementedError, OSError) as exc:
+        raise ValueError(f"Review package member could not be read safely: {name}") from exc
+
+
 def _read_json(book: zipfile.ZipFile, name: str) -> dict[str, Any]:
     try:
-        value = json.loads(book.read(name).decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, KeyError) as exc:
+        value = json.loads(_read_member(book, name).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"Review package contains invalid {name}.") from exc
     if not isinstance(value, dict):
         raise ValueError(f"Review package {name} must contain a JSON object.")
@@ -213,7 +221,7 @@ def verify_review_package(data: bytes) -> dict[str, Any]:
                 raise ValueError(f"Review package integrity SHA-256 is invalid: {name}")
             if not isinstance(expected_size, int) or expected_size < 0:
                 raise ValueError(f"Review package integrity size is invalid: {name}")
-            member_data = book.read(name)
+            member_data = _read_member(book, name)
             if len(member_data) != expected_size:
                 raise ValueError(f"Review package member size does not match integrity metadata: {name}")
             if _sha256(member_data) != expected_sha:
