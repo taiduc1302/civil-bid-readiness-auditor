@@ -1,10 +1,10 @@
 """Public server entrypoint with Civil Estimate Review Auditor review UX.
 
 The tested runtime remains in ``server_legacy``. This wrapper adds the public
-product title, presentation-only filtering/sorting/grouping/navigation,
-explicit in-memory review-package export, governed reference evidence
-metadata, and a fictional onboarding guide without changing deterministic
-findings or reference-match semantics.
+product title, presentation-only finding/reference review views, explicit
+in-memory review-package export, governed reference evidence metadata, and a
+fictional onboarding guide without changing deterministic audit/reference
+semantics.
 """
 from __future__ import annotations
 
@@ -31,6 +31,8 @@ from review_package import build_review_package
 _LEGACY_TITLE = b"Civil Bid Readiness Auditor"
 _PUBLIC_TITLE = b"Civil Estimate Review Auditor"
 _original_home = _server.home
+_FINDING_VIEW_KEYS = ("severity", "review_status", "rule_id", "sheet", "q", "sort_by", "group_by")
+_REFERENCE_VIEW_KEYS = ("ref_status", "ref_type", "ref_q", "ref_sort", "ref_group")
 _ACCESSIBILITY_STYLE = """
 <style>
 .skip-links{margin:0 0 12px}.skip-links a{margin-right:12px}
@@ -57,6 +59,14 @@ _server._reference_panel = reference_panel
 
 def _selected(value: str, current: str) -> str:
     return " selected" if value == current else ""
+
+
+def _hidden_view_inputs(values: dict[str, str], keys: tuple[str, ...]) -> str:
+    return "".join(
+        f"<input type='hidden' name='{html.escape(key, quote=True)}' value='{html.escape(str(values.get(key, '')), quote=True)}'>"
+        for key in keys
+        if values.get(key, "") != ""
+    )
 
 
 def _result_url(token: str, current: dict[str, str] | None = None, **overrides: str) -> str:
@@ -115,7 +125,19 @@ def _filter_controls(token: str, result: dict, filters: dict[str, str], visible:
         ]
     )
     total = len(result.get("findings", []))
-    return f"""<section class='card' id='filters' tabindex='-1' aria-labelledby='filters-heading'><h2 id='filters-heading'>Review filters and view</h2><p><strong>Visible:</strong> {visible} of {total} findings. Filtering, sorting, and grouping change only this view; findings and saved review state are unchanged.</p><p><strong>Quick views:</strong> {quick}</p><form action='/results' method='get'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='display:flex;gap:1rem;flex-wrap:wrap'><label>Severity<br><select name='severity'>{severity_options}</select></label><label>Review status<br><select name='review_status'>{review_options}</select></label><label>Rule<br><select name='rule_id'>{rule_options}</select></label><label>Sheet<br><select name='sheet'>{sheet_options}</select></label><label>Search<br><input type='search' name='q' value='{html.escape(filters['q'], quote=True)}' placeholder='message, evidence, row, note'></label><label>Sort by<br><select name='sort_by'>{sort_options}</select></label><label>Group by<br><select name='group_by'>{group_options}</select></label></div><p><button type='submit'>Apply view</button> <a href='{_result_url(token)}'>Reset view</a></p></form></section>"""
+    reference_hidden = _hidden_view_inputs(filters, _REFERENCE_VIEW_KEYS)
+    reset_url = _result_url(
+        token,
+        filters,
+        severity="",
+        review_status="",
+        rule_id="",
+        sheet="",
+        q="",
+        sort_by="priority",
+        group_by="",
+    )
+    return f"""<section class='card' id='filters' tabindex='-1' aria-labelledby='filters-heading'><h2 id='filters-heading'>Review filters and view</h2><p><strong>Visible:</strong> {visible} of {total} findings. Filtering, sorting, and grouping change only this view; findings and saved review state are unchanged.</p><p><strong>Quick views:</strong> {quick}</p><form action='/results' method='get'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'>{reference_hidden}<div style='display:flex;gap:1rem;flex-wrap:wrap'><label>Severity<br><select name='severity'>{severity_options}</select></label><label>Review status<br><select name='review_status'>{review_options}</select></label><label>Rule<br><select name='rule_id'>{rule_options}</select></label><label>Sheet<br><select name='sheet'>{sheet_options}</select></label><label>Search<br><input type='search' name='q' value='{html.escape(filters['q'], quote=True)}' placeholder='message, evidence, row, note'></label><label>Sort by<br><select name='sort_by'>{sort_options}</select></label><label>Group by<br><select name='group_by'>{group_options}</select></label></div><p><button type='submit'>Apply view</button> <a href='{reset_url}'>Reset findings view</a></p></form></section>"""
 
 
 def _render_review_rows(groups, dispositions: dict[int, dict[str, str]]) -> str:
@@ -140,14 +162,20 @@ def _render_review_rows(groups, dispositions: dict[int, dict[str, str]]) -> str:
 def findings_page(token: str, session: dict, message: str = "", filters: dict[str, str] | None = None) -> bytes:
     result = session["result"]
     dispositions = session.setdefault("dispositions", _server.default_dispositions(result))
+    incoming = filters or {}
     filters = {
-        "severity": str((filters or {}).get("severity", "") or ""),
-        "review_status": str((filters or {}).get("review_status", "") or ""),
-        "rule_id": str((filters or {}).get("rule_id", "") or ""),
-        "sheet": str((filters or {}).get("sheet", "") or ""),
-        "q": str((filters or {}).get("q", "") or ""),
-        "sort_by": str((filters or {}).get("sort_by", "priority") or "priority"),
-        "group_by": str((filters or {}).get("group_by", "") or ""),
+        "severity": str(incoming.get("severity", "") or ""),
+        "review_status": str(incoming.get("review_status", "") or ""),
+        "rule_id": str(incoming.get("rule_id", "") or ""),
+        "sheet": str(incoming.get("sheet", "") or ""),
+        "q": str(incoming.get("q", "") or ""),
+        "sort_by": str(incoming.get("sort_by", "priority") or "priority"),
+        "group_by": str(incoming.get("group_by", "") or ""),
+        "ref_status": str(incoming.get("ref_status", "Exceptions") or "Exceptions"),
+        "ref_type": str(incoming.get("ref_type", "") or ""),
+        "ref_q": str(incoming.get("ref_q", "") or ""),
+        "ref_sort": str(incoming.get("ref_sort", "status") or "status"),
+        "ref_group": str(incoming.get("ref_group", "") or ""),
     }
     visible_findings = filter_findings(
         result,
@@ -168,7 +196,9 @@ def findings_page(token: str, session: dict, message: str = "", filters: dict[st
     alert = f"<div class='notice'>{html.escape(message)}</div>" if message else ""
     review_summary = " | ".join(f"{html.escape(status)}: {disposition_counts[status]}" for status in REVIEW_STATUSES)
     controls = _filter_controls(token, result, filters, len(visible_findings))
-    reference_html = reference_panel(token, session).replace(
+    finding_view = {key: filters[key] for key in _FINDING_VIEW_KEYS}
+    reference_view = {key: filters[key] for key in _REFERENCE_VIEW_KEYS}
+    reference_html = reference_panel(token, session, view=reference_view, preserve=finding_view).replace(
         "<section class='card'>",
         "<section class='card' id='references' tabindex='-1' aria-labelledby='references-heading'>",
         1,
@@ -233,6 +263,11 @@ class Handler(_server.Handler):
                 "q": query.get("q", [""])[0],
                 "sort_by": query.get("sort_by", ["priority"])[0],
                 "group_by": query.get("group_by", [""])[0],
+                "ref_status": query.get("ref_status", ["Exceptions"])[0],
+                "ref_type": query.get("ref_type", [""])[0],
+                "ref_q": query.get("ref_q", [""])[0],
+                "ref_sort": query.get("ref_sort", ["status"])[0],
+                "ref_group": query.get("ref_group", [""])[0],
             }
             self.send_html(findings_page(token, session, filters=filters))
             return
