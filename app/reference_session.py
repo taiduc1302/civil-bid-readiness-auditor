@@ -1,10 +1,11 @@
 """Temporary-session governed reference upload metadata and rendering."""
 from __future__ import annotations
 
+from collections import Counter
 import html
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from audit_engine import InputError
 from reference_metadata import build_reference_metadata
@@ -14,6 +15,15 @@ from reference_validation import (
     canonicalize_export_rows,
     parse_reference_csv,
     validate_export_rows,
+)
+from reference_views import (
+    REFERENCE_GROUP_OPTIONS,
+    REFERENCE_SORT_OPTIONS,
+    REFERENCE_STATUS_FILTERS,
+    REFERENCE_TYPE_FILTERS,
+    filter_reference_results,
+    group_reference_results,
+    sort_reference_results,
 )
 
 _FILE_FIELDS = {
@@ -122,8 +132,106 @@ def _metadata_table(metadata: list[dict[str, Any]]) -> str:
     )
 
 
-def reference_panel(token: str, session: dict[str, Any]) -> str:
-    """Render reference upload/results UI with explicit evidence metadata fields."""
+def _hidden_inputs(values: dict[str, str] | None) -> str:
+    return "".join(
+        f"<input type='hidden' name='{html.escape(key, quote=True)}' value='{html.escape(str(value), quote=True)}'>"
+        for key, value in (values or {}).items()
+        if value not in (None, "")
+    )
+
+
+def _reference_url(token: str, preserve: dict[str, str], view: dict[str, str], **overrides: str) -> str:
+    query = {"token": token}
+    query.update({key: value for key, value in preserve.items() if value})
+    query.update({key: value for key, value in view.items() if value})
+    for key, value in overrides.items():
+        if value:
+            query[key] = value
+        else:
+            query.pop(key, None)
+    return "/results?" + urlencode(query)
+
+
+def _reference_controls(
+    token: str,
+    results: list[dict[str, Any]],
+    view: dict[str, str],
+    preserve: dict[str, str],
+    visible: int,
+) -> str:
+    status_options = "".join(
+        f"<option value='{status}'{' selected' if view['ref_status'] == status else ''}>{status}</option>"
+        for status in REFERENCE_STATUS_FILTERS
+    )
+    type_labels = {"": "All types", "activity": "Activity", "resource": "Resource"}
+    type_options = "".join(
+        f"<option value='{value}'{' selected' if view['ref_type'] == value else ''}>{type_labels[value]}</option>"
+        for value in REFERENCE_TYPE_FILTERS
+    )
+    sort_labels = {"status": "Status", "source": "Source sheet / row", "code": "Source code", "type": "Reference type"}
+    sort_options = "".join(
+        f"<option value='{value}'{' selected' if view['ref_sort'] == value else ''}>{html.escape(sort_labels[value])}</option>"
+        for value in REFERENCE_SORT_OPTIONS
+    )
+    group_labels = {"": "No grouping", "status": "Status", "type": "Reference type"}
+    group_options = "".join(
+        f"<option value='{value}'{' selected' if view['ref_group'] == value else ''}>{html.escape(group_labels[value])}</option>"
+        for value in REFERENCE_GROUP_OPTIONS
+    )
+    quick = " ".join(
+        [
+            f"<a href='{_reference_url(token, preserve, view, ref_status='Exceptions')}'>Exceptions</a>",
+            f"<a href='{_reference_url(token, preserve, view, ref_status='NO_MATCH')}'>NO_MATCH</a>",
+            f"<a href='{_reference_url(token, preserve, view, ref_status='UNIT_MISMATCH')}'>UNIT_MISMATCH</a>",
+            f"<a href='{_reference_url(token, preserve, view, ref_status='NOT_CHECKED')}'>NOT_CHECKED</a>",
+            f"<a href='{_reference_url(token, preserve, view, ref_status='All')}'>All checks</a>",
+        ]
+    )
+    return f"""<div id='reference-view-controls'><h3>Reference result view</h3>
+<p><strong>Visible:</strong> {visible} of {len(results)} checks. Reference view controls never change validation results or evidence metadata.</p>
+<p><strong>Quick views:</strong> {quick}</p>
+<form action='/results' method='get'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'>{_hidden_inputs(preserve)}
+<div style='display:flex;gap:1rem;flex-wrap:wrap'>
+<label>Status<br><select name='ref_status'>{status_options}</select></label>
+<label>Type<br><select name='ref_type'>{type_options}</select></label>
+<label>Search<br><input type='search' name='ref_q' value='{html.escape(view['ref_q'], quote=True)}' placeholder='code, message, filename, revision'></label>
+<label>Sort by<br><select name='ref_sort'>{sort_options}</select></label>
+<label>Group by<br><select name='ref_group'>{group_options}</select></label>
+</div><p><button type='submit'>Apply reference view</button> <a href='{_reference_url(token, preserve, {"ref_status": "Exceptions", "ref_sort": "status"})}'>Reset reference view</a></p></form></div>"""
+
+
+def _reference_rows(groups: list[tuple[str, list[dict[str, Any]]]]) -> str:
+    parts: list[str] = []
+    has_grouping = len(groups) > 1 or (groups and groups[0][0])
+    for label, items in groups:
+        if has_grouping and label:
+            parts.append(
+                f"<tr class='group-row'><th colspan='8' scope='rowgroup'>{html.escape(label)} "
+                f"<span class='visually-helpful'>({len(items)} check{'s' if len(items) != 1 else ''})</span></th></tr>"
+            )
+        for item in items:
+            parts.append(
+                "<tr>"
+                f"<td class='{html.escape(str(item['status']))}'>{html.escape(str(item['status']))}</td>"
+                f"<td>{html.escape(str(item['reference_type']))}</td>"
+                f"<td>{html.escape(str(item.get('sheet', '')))}</td>"
+                f"<td>{html.escape(str(item['source_row']))}</td>"
+                f"<td>{html.escape(str(item['code']))}</td>"
+                f"<td>{html.escape(str(item['reference_code']))}</td>"
+                f"<td>{html.escape(str(item['reference_unit']))}</td>"
+                f"<td>{html.escape(str(item['message']))}</td>"
+                "</tr>"
+            )
+    return "".join(parts) or "<tr><td colspan='8'>No reference checks match the current view.</td></tr>"
+
+
+def reference_panel(
+    token: str,
+    session: dict[str, Any],
+    view: dict[str, str] | None = None,
+    preserve: dict[str, str] | None = None,
+) -> str:
+    """Render reference upload/results UI with explicit evidence metadata and presentation-only views."""
     action = f"/references?token={quote(token, safe='')}"
     results = session.get("reference_results")
     metadata = session.get("reference_metadata", []) if results else []
@@ -143,27 +251,33 @@ def reference_panel(token: str, session: dict[str, Any]) -> str:
             f"{upload_form}</section>"
         )
 
-    from collections import Counter
+    view = {
+        "ref_status": str((view or {}).get("ref_status", "Exceptions") or "Exceptions"),
+        "ref_type": str((view or {}).get("ref_type", "") or ""),
+        "ref_q": str((view or {}).get("ref_q", "") or ""),
+        "ref_sort": str((view or {}).get("ref_sort", "status") or "status"),
+        "ref_group": str((view or {}).get("ref_group", "") or ""),
+    }
+    preserve = {key: str(value) for key, value in (preserve or {}).items() if value not in (None, "")}
+    filtered = filter_reference_results(
+        results,
+        metadata,
+        status=view["ref_status"],
+        reference_type=view["ref_type"],
+        text=view["ref_q"],
+    )
+    ordered = sort_reference_results(filtered, view["ref_sort"])
+    groups = group_reference_results(ordered, view["ref_group"])
+
     counts = Counter(item["status"] for item in results)
     summary = " | ".join(f"{status}: {counts.get(status, 0)}" for status in REFERENCE_STATUSES)
-    exceptions = [item for item in results if item["status"] != "MATCH"]
-    rows = "".join(
-        "<tr>"
-        f"<td class='{html.escape(str(item['status']))}'>{html.escape(str(item['status']))}</td>"
-        f"<td>{html.escape(str(item['reference_type']))}</td>"
-        f"<td>{html.escape(str(item.get('sheet', '')))}</td>"
-        f"<td>{html.escape(str(item['source_row']))}</td>"
-        f"<td>{html.escape(str(item['code']))}</td>"
-        f"<td>{html.escape(str(item['reference_code']))}</td>"
-        f"<td>{html.escape(str(item['reference_unit']))}</td>"
-        f"<td>{html.escape(str(item['message']))}</td>"
-        "</tr>"
-        for item in exceptions
-    ) or "<tr><td colspan='8'>No reference exceptions. All checked codes matched the supplied references.</td></tr>"
+    rows = _reference_rows(groups)
+    controls = _reference_controls(token, results, view, preserve, len(filtered))
     return f"""<section class='card'><h2>Governed reference validation</h2>
 <p><strong>Results:</strong> {html.escape(summary)}</p>
 <p>Checks use only the explicitly uploaded reference files for this temporary session. A match and a recorded hash do not establish authority or HeavyBid import approval.</p>
 {metadata_html}
+{controls}
 <p><a class='button' href='/export/references?token={html.escape(token, quote=True)}'>Download reference checks CSV</a></p>
-<div style='overflow:auto'><table><thead><tr><th>Status</th><th>Type</th><th>Sheet</th><th>Row</th><th>Source code</th><th>Reference code</th><th>Reference unit</th><th>Message</th></tr></thead><tbody>{rows}</tbody></table></div>
+<div style='overflow:auto'><table><caption>Visible governed reference checks</caption><thead><tr><th>Status</th><th>Type</th><th>Sheet</th><th>Row</th><th>Source code</th><th>Reference code</th><th>Reference unit</th><th>Message</th></tr></thead><tbody>{rows}</tbody></table></div>
 <h3>Replace / rerun references</h3>{upload_form}</section>"""
