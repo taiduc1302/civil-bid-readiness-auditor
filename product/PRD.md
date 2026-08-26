@@ -20,22 +20,23 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 10. Keyboard-friendly skip links, focus targets, visible focus styling, and review-table caption/labels.
 11. Findings CSV, review-state CSV, governed-reference CSV, printable HTML management summary, and deterministic local ZIP review package.
 12. Review-package manifest containing mappings, reviewed sheets, finding/review/reference counts, source filename, package version, reference evidence metadata, and safety flags while excluding original estimate/reference bytes.
-13. Exact Activity/Resource code + unit validation against explicitly supplied governed reference snapshots.
-14. Governed reference evidence metadata: role, filename, user-supplied revision/label, byte size, SHA-256, and explicit `NOT_ESTABLISHED_BY_APP` authority state.
-15. Presentation-only governed reference result views: Exceptions by default, status/type filters, metadata-aware search, deterministic sort by status/source/code/type, optional grouping by status/type, and composed `/results` state with findings views.
-16. Optional evidence-only Crew Code / Production Rate comparison when values are explicit on both source and approved reference.
-17. Local fictional onboarding walkthrough covering mapping, review views, dispositions, governed reference evidence, and review-package export using bundled training data only.
-18. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
-19. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
-20. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
-21. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, and control-gate fixtures with regression coverage.
-22. GitHub Actions test matrix on supported Python versions.
+13. Deterministic review-package integrity metadata plus an in-memory verifier for member names, allowed structure, byte sizes, SHA-256 values, and supported package identity. Integrity verification does not restore session state or establish approval/readiness.
+14. Exact Activity/Resource code + unit validation against explicitly supplied governed reference snapshots.
+15. Governed reference evidence metadata: role, filename, user-supplied revision/label, byte size, SHA-256, and explicit `NOT_ESTABLISHED_BY_APP` authority state.
+16. Presentation-only governed reference result views: Exceptions by default, status/type filters, metadata-aware search, deterministic sort by status/source/code/type, optional grouping by status/type, and composed `/results` state with findings views.
+17. Optional evidence-only Crew Code / Production Rate comparison when values are explicit on both source and approved reference.
+18. Local fictional onboarding walkthrough covering mapping, review views, dispositions, governed reference evidence, and review-package export using bundled training data only.
+19. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
+20. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
+21. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
+22. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity, and control-gate fixtures with regression coverage.
+23. GitHub Actions test matrix on supported Python versions.
 
 ## Next product milestone
 
 ### P1 — review UX hardening
 
-- evaluate package-integrity / re-open semantics before any resumable review workflow is introduced;
+- define any future review-package re-open/state-restoration workflow only after an explicit version/migration/ownership contract; package integrity verification is built, session restoration is not;
 - consider carefully constrained bulk review actions only with explicit human ownership and fail-closed validation;
 - add clearer first-run hints around optional governed reference workflows without implying authority;
 - continue accessibility review for semantics beyond the current keyboard/focus pass;
@@ -63,7 +64,7 @@ The writer must:
 
 ## Deferred / not built
 
-Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, direct HeavyBid database/API access, and production import automation.
+Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, review-package session restoration/re-open, direct HeavyBid database/API access, and production import automation.
 
 ## Non-goals and safeguards
 
