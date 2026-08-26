@@ -3,8 +3,8 @@
 The tested runtime remains in ``server_legacy``. This wrapper adds the public
 product title, presentation-only finding/reference review views, review
 attention guidance, explicit in-memory review-package export and verification,
-governed reference evidence metadata, and a fictional onboarding guide without
-changing deterministic audit/reference semantics.
+governed reference evidence metadata, and a fixed fictional onboarding/demo
+kit without changing deterministic audit/reference semantics.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import server_legacy as _server
 from server_legacy import *  # noqa: F401,F403 - compatibility re-export
+from demo_kit import reference_fixture, structured_estimate
 from onboarding import guide_body
 from package_verification import read_package_upload, verification_page_body
 from reference_metadata import reference_review_csv
@@ -248,6 +249,20 @@ class Handler(_server.Handler):
         if parsed.path == "/verify-package":
             self.send_html(package_verification_page())
             return
+        if parsed.path in ("/demo/reference/activity", "/demo/reference/resource"):
+            role = parsed.path.rsplit("/", 1)[-1]
+            try:
+                filename, content = reference_fixture(role)
+            except ValueError:
+                self.send_html(home("Unknown fictional reference fixture."), HTTPStatus.NOT_FOUND)
+                return
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
         if parsed.path == "/export/references":
             _server.expire_sessions()
             token = parse_qs(parsed.query).get("token", [""])[0]
@@ -307,6 +322,17 @@ class Handler(_server.Handler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/sample-structured":
+            filename, data = structured_estimate()
+            session = {
+                "filename": filename,
+                "sheets": _server.parse_upload(filename, data),
+                "created": _server.time.monotonic(),
+            }
+            token = _server.secrets.token_urlsafe(18)
+            SESSIONS[token] = session
+            self.send_html(_server.mapping_page(token, session))
+            return
         if parsed.path == "/verify-package":
             try:
                 message = _server._multipart_message(self)
