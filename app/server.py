@@ -1,10 +1,10 @@
 """Public server entrypoint with Civil Estimate Review Auditor review UX.
 
 The tested runtime remains in ``server_legacy``. This wrapper adds the public
-product title, presentation-only finding/reference review views, explicit
-in-memory review-package export, governed reference evidence metadata, and a
-fictional onboarding guide without changing deterministic audit/reference
-semantics.
+product title, presentation-only finding/reference review views, review
+attention guidance, explicit in-memory review-package export, governed
+reference evidence metadata, and a fictional onboarding guide without
+changing deterministic audit/reference semantics.
 """
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from review_filters import (
     group_findings,
     sort_findings,
 )
+from review_guidance import review_attention_summary
 from review_package import build_review_package
 
 _LEGACY_TITLE = b"Civil Bid Readiness Auditor"
@@ -140,6 +141,24 @@ def _filter_controls(token: str, result: dict, filters: dict[str, str], visible:
     return f"""<section class='card' id='filters' tabindex='-1' aria-labelledby='filters-heading'><h2 id='filters-heading'>Review filters and view</h2><p><strong>Visible:</strong> {visible} of {total} findings. Filtering, sorting, and grouping change only this view; findings and saved review state are unchanged.</p><p><strong>Quick views:</strong> {quick}</p><form action='/results' method='get'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'>{reference_hidden}<div style='display:flex;gap:1rem;flex-wrap:wrap'><label>Severity<br><select name='severity'>{severity_options}</select></label><label>Review status<br><select name='review_status'>{review_options}</select></label><label>Rule<br><select name='rule_id'>{rule_options}</select></label><label>Sheet<br><select name='sheet'>{sheet_options}</select></label><label>Search<br><input type='search' name='q' value='{html.escape(filters['q'], quote=True)}' placeholder='message, evidence, row, note'></label><label>Sort by<br><select name='sort_by'>{sort_options}</select></label><label>Group by<br><select name='group_by'>{group_options}</select></label></div><p><button type='submit'>Apply view</button> <a href='{reset_url}'>Reset findings view</a></p></form></section>"""
 
 
+def _attention_panel(token: str, summary: dict, filters: dict[str, str]) -> str:
+    open_url = _result_url(token, filters, severity="", review_status="Open", rule_id="", sheet="", q="")
+    correction_url = _result_url(token, filters, severity="", review_status="Needs correction", rule_id="", sheet="", q="")
+    reference_url = _result_url(token, filters, ref_status="Exceptions") + "#references"
+    return f"""<section class='card' id='attention' tabindex='-1' aria-labelledby='attention-heading'>
+<h2 id='attention-heading'>Review attention summary</h2>
+<div class='metrics'>
+<div class='metric'><strong>{summary['open_count']}</strong><br>Open findings</div>
+<div class='metric'><strong>{summary['needs_correction_count']}</strong><br>Needs correction</div>
+<div class='metric'><strong>{summary['reference_exception_count']}</strong><br>Reference exceptions</div>
+</div>
+<p>{html.escape(summary['finding_message'])}</p>
+<p>{html.escape(summary['reference_message'])}</p>
+<p><a href='{open_url}'>View Open findings</a> &nbsp; <a href='{correction_url}'>View Needs correction</a> &nbsp; <a href='{reference_url}'>View reference exceptions</a></p>
+<p class='visually-helpful'>These counts describe the current review state only. They do not establish estimator approval, reference authority, or bid readiness.</p>
+</section>"""
+
+
 def _render_review_rows(groups, dispositions: dict[int, dict[str, str]]) -> str:
     parts: list[str] = []
     has_grouping = len(groups) > 1 or (groups and groups[0][0])
@@ -156,7 +175,7 @@ def _render_review_rows(groups, dispositions: dict[int, dict[str, str]]) -> str:
                 dispositions.get(finding_id, {"status": "Open", "reason": ""}),
             ).replace("<tr>", f"<tr id='finding-{finding_id}'>", 1)
             parts.append(row)
-    return "".join(parts) or "<tr><td colspan='10'>No findings match the current filters.</td></tr>"
+    return "".join(parts) or "<tr><td colspan='10'>No findings match the current filters. The underlying audit result is unchanged.</td></tr>"
 
 
 def findings_page(token: str, session: dict, message: str = "", filters: dict[str, str] | None = None) -> bytes:
@@ -192,6 +211,8 @@ def findings_page(token: str, session: dict, message: str = "", filters: dict[st
     counts = result["counts"]
     metrics = result["review_metrics"]
     disposition_counts = _server.review_metrics(result, dispositions)
+    attention = review_attention_summary(result, dispositions, session.get("reference_results", []))
+    attention_html = _attention_panel(token, attention, filters)
     rows = _render_review_rows(grouped_findings, dispositions)
     alert = f"<div class='notice'>{html.escape(message)}</div>" if message else ""
     review_summary = " | ".join(f"{html.escape(status)}: {disposition_counts[status]}" for status in REVIEW_STATUSES)
@@ -203,8 +224,8 @@ def findings_page(token: str, session: dict, message: str = "", filters: dict[st
         "<section class='card' id='references' tabindex='-1' aria-labelledby='references-heading'>",
         1,
     ).replace("<h2>Governed reference validation</h2>", "<h2 id='references-heading'>Governed reference validation</h2>", 1)
-    navigation = "<nav class='skip-links' aria-label='Review page navigation'><a href='#filters'>Skip to filters</a><a href='#findings'>Skip to findings</a><a href='#references'>Skip to references</a></nav>"
-    return _server.page("Audit results", f"""{_ACCESSIBILITY_STYLE}{navigation}{alert}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/package?token={token}'>Download review package ZIP</a> <a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section>{controls}<section class='card' id='findings' tabindex='-1' aria-labelledby='findings-heading'><h2 id='findings-heading'>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table aria-describedby='findings-caption'><caption id='findings-caption'>Visible deterministic findings and human review controls</caption><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save visible review states</button> <a href='#filters'>Back to filters</a></p></form></section>{reference_html}""")
+    navigation = "<nav class='skip-links' aria-label='Review page navigation'><a href='#attention'>Skip to attention summary</a><a href='#filters'>Skip to filters</a><a href='#findings'>Skip to findings</a><a href='#references'>Skip to references</a></nav>"
+    return _server.page("Audit results", f"""{_ACCESSIBILITY_STYLE}{navigation}{alert}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/package?token={token}'>Download review package ZIP</a> <a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section>{attention_html}{controls}<section class='card' id='findings' tabindex='-1' aria-labelledby='findings-heading'><h2 id='findings-heading'>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table aria-describedby='findings-caption'><caption id='findings-caption'>Visible deterministic findings and human review controls</caption><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save visible review states</button> <a href='#filters'>Back to filters</a></p></form></section>{reference_html}""")
 
 
 _server.findings_page = findings_page
