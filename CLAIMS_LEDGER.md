@@ -7,6 +7,7 @@
 | Numeric non-finite values and -100% markup conversion are controlled. | `tests/test_external_regressions.py`. |
 | The app supports optional hierarchy-aware mapping and a fail-closed HeavyBid-style resource-export profile. | `app/heavybid_adapter.py`, `tests/test_heavybid_adapter.py`, `tests/test_server_profile_detection.py`. |
 | The app supports temporary local human finding dispositions and review CSV export. | `app/finding_review.py`, `tests/test_finding_review.py`, `tests/test_server_review.py`. |
+| The app reports presentation-only Open/Needs correction/reference-exception attention counts with explicit non-readiness empty-state language. | `app/review_guidance.py`, `tests/test_review_guidance.py`, `tests/test_server_attention.py`. |
 | The app supports presentation-only findings filters, deterministic sorting/grouping, and stable temporary results navigation without mutating deterministic findings or dispositions. | `app/review_filters.py`, `tests/test_review_filters.py`, `tests/test_server_filters.py`. |
 | The review page includes keyboard-friendly skip links, focus targets, visible focus styling, and a findings table caption. | `app/server.py`, `tests/test_server_filters.py`. |
 | The app exports a deterministic local ZIP review package without embedding original estimate/reference bytes. | `app/review_package.py`, `tests/test_review_package.py`, `tests/test_server_package.py`. |
