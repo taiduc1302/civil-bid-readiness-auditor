@@ -2,8 +2,9 @@
 
 The tested runtime remains in ``server_legacy``. This wrapper adds the public
 product title, presentation-only filtering/sorting/grouping/navigation,
-explicit in-memory review-package export, and governed reference evidence
-metadata without changing deterministic findings or reference-match semantics.
+explicit in-memory review-package export, governed reference evidence
+metadata, and a fictional onboarding guide without changing deterministic
+findings or reference-match semantics.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import server_legacy as _server
 from server_legacy import *  # noqa: F401,F403 - compatibility re-export
+from onboarding import guide_body
 from reference_metadata import reference_review_csv
 from reference_session import parse_reference_multipart, reference_panel, validate_reference_submission
 from review_filters import (
@@ -40,7 +42,13 @@ caption{text-align:left;font-weight:bold;padding:8px 0}
 
 
 def home(message: str = "") -> bytes:
-    return _original_home(message).replace(_LEGACY_TITLE, _PUBLIC_TITLE)
+    content = _original_home(message).replace(_LEGACY_TITLE, _PUBLIC_TITLE)
+    guide_card = b"<section class='card'><h2>New here?</h2><p>Use a fictional walkthrough to learn mapping, review views, dispositions, governed reference evidence, and review-package export without using live project data.</p><p><a class='button' href='/guide'>Open fictional onboarding walkthrough</a></p></section>"
+    return content.replace(b"</main>", guide_card + b"</main>", 1)
+
+
+def guide_page() -> bytes:
+    return _server.page("Fictional onboarding walkthrough", guide_body())
 
 
 _server.home = home
@@ -175,6 +183,9 @@ _server.findings_page = findings_page
 class Handler(_server.Handler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/guide":
+            self.send_html(guide_page())
+            return
         if parsed.path == "/export/references":
             _server.expire_sessions()
             token = parse_qs(parsed.query).get("token", [""])[0]
