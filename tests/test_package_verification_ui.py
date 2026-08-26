@@ -79,7 +79,7 @@ class PackageVerificationUiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"Verify a review package", page)
         self.assertIn(b"action='/verify-package'", page)
-        self.assertIn(b"does not restore", page)
+        self.assertIn(b"never restores", page)
         self.assertEqual(SESSIONS, {})
 
     def test_valid_package_verifies_without_creating_session(self):
