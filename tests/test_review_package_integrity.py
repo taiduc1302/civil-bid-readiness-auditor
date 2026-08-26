@@ -45,7 +45,11 @@ class ReviewPackageIntegrityTests(unittest.TestCase):
 
     def test_changed_member_fails_sha_verification(self):
         members = self.members(self.package())
-        members["findings.csv"] += b"tampered\n"
+        original = members["findings.csv"]
+        self.assertGreater(len(original), 1)
+        replacement = b"X" if original[:1] != b"X" else b"Y"
+        members["findings.csv"] = replacement + original[1:]
+        self.assertEqual(len(members["findings.csv"]), len(original))
         with self.assertRaisesRegex(ValueError, "SHA-256 does not match"):
             verify_review_package(self.make_zip(members))
 
