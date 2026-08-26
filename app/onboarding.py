@@ -17,8 +17,8 @@ def guide_body() -> str:
 </section>
 <section class='card'>
 <h2>3. Work the review queue</h2>
-<p>Try Priority/Open quick views, free-text search, and filters. Sort by priority, source, rule, sheet, or review status; optionally group by sheet, rule, or review status.</p>
-<p>Use the page skip links to move between filters, findings, and references with the keyboard.</p>
+<p>Use the attention summary, Priority/Open quick views, free-text search, and filters. Sort by priority, source, rule, sheet, or review status; optionally group by sheet, rule, or review status.</p>
+<p>Use the page skip links to move between attention, filters, findings, and references with the keyboard.</p>
 </section>
 <section class='card'>
 <h2>4. Record human dispositions</h2>
@@ -26,13 +26,20 @@ def guide_body() -> str:
 </section>
 <section class='card'>
 <h2>5. Explore governed reference evidence</h2>
-<p>For reference practice, use the bundled fictional HeavyBid-style resource export and fictional Activity/Resource reference CSV files. An optional revision/label is recorded exactly as entered.</p>
-<p>Reference metadata records role, filename, revision/label, byte size, and SHA-256 with <code>authority_status=NOT_ESTABLISHED_BY_APP</code>. MATCH or a recorded hash does not establish authority.</p>
+<p>Start a separate fictional structured estimate. It uses the bundled HeavyBid-style resource-export fixture and opens the same editable mapping page used by normal uploads.</p>
+<form action='/sample-structured' method='post'><button type='submit'>Run structured fictional sample</button></form>
+<p>After auditing that sample, download one or both fictional references and upload them manually in the Governed reference validation section:</p>
+<p><a class='button' href='/demo/reference/activity'>Download fictional Activity reference CSV</a> <a class='button' href='/demo/reference/resource'>Download fictional Resource reference CSV</a></p>
+<p><strong>References are never auto-applied.</strong> An optional revision/label is recorded exactly as entered. Reference metadata records role, filename, revision/label, byte size, and SHA-256 with <code>authority_status=NOT_ESTABLISHED_BY_APP</code>. MATCH or a recorded hash does not establish authority.</p>
 </section>
 <section class='card'>
-<h2>6. Export a review snapshot</h2>
-<p>Download the review package ZIP after reviewing findings and optional references. It can contain manifest.json, findings.csv, review.csv, summary.html, README.txt, and references.csv.</p>
-<p>Original estimate/reference bytes are intentionally excluded. The ZIP is a review snapshot, not a project database, bid approval, or HeavyBid artifact.</p>
+<h2>6. Review reference results</h2>
+<p>The reference view starts with Exceptions and supports status/type filters, metadata-aware search, sorting, and grouping. These controls change only the presentation view.</p>
+</section>
+<section class='card'>
+<h2>7. Export and verify a review snapshot</h2>
+<p>Download the review package ZIP after reviewing findings and optional references. It contains review/report files plus <code>integrity.json</code>; original estimate/reference bytes are intentionally excluded.</p>
+<p>Return to the home page and use <strong>Verify review package ZIP</strong> to check recorded member structure and hashes without restoring a review session.</p>
 </section>
 <section class='card'>
 <h2>Safety state</h2>
