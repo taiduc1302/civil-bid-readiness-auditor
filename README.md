@@ -20,7 +20,8 @@ This is a reviewable prototype, not production-ready estimating software and not
 8. Optionally validate explicitly supplied Activity/Resource codes and units against governed reference data. A user-supplied revision/label, filename, byte size, and SHA-256 are recorded as evidence; the app does not infer reference authority.
 9. Review governed reference checks with an independent presentation view: default Exceptions, status/type filters, metadata-aware search, sorting by status/source/code/type, and optional grouping by status/type. Findings-view and reference-view settings preserve each other; neither changes stored results.
 10. Optional Crew Code / Production Rate comparison is evidence-only and runs only when those values are explicitly present on both sides.
-11. Export individual CSV/HTML reports or download one deterministic ZIP review package containing the manifest, findings, review states, summary, and all reference checks when present. UI filters never silently filter the exported session snapshot. Original estimate/reference bytes are intentionally excluded.
+11. Export individual CSV/HTML reports or download one deterministic ZIP review package containing the manifest, findings, review states, summary, all reference checks when present, and `integrity.json`. Original estimate/reference bytes are intentionally excluded.
+12. `integrity.json` records SHA-256 and byte size for every other package member. The in-memory verifier rejects changed/missing/duplicate/unexpected/unsafe members and unsupported package identity. Integrity verification does not restore a session and does not establish approval, authority, or readiness.
 
 ## Run locally
 
