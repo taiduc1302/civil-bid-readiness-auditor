@@ -21,7 +21,8 @@ This is a reviewable prototype, not production-ready estimating software and not
 9. Review governed reference checks with an independent presentation view: default Exceptions, status/type filters, metadata-aware search, sorting by status/source/code/type, and optional grouping by status/type. Findings-view and reference-view settings preserve each other; neither changes stored results.
 10. Optional Crew Code / Production Rate comparison is evidence-only and runs only when those values are explicitly present on both sides.
 11. Export individual CSV/HTML reports or download one deterministic ZIP review package containing the manifest, findings, review states, summary, all reference checks when present, and `integrity.json`. Original estimate/reference bytes are intentionally excluded.
-12. `integrity.json` records SHA-256 and byte size for every other package member. The in-memory verifier rejects changed/missing/duplicate/unexpected/unsafe members and unsupported package identity. Integrity verification does not restore a session and does not establish approval, authority, or readiness.
+12. `integrity.json` records SHA-256 and byte size for every other package member. The in-memory verifier rejects changed/missing/duplicate/unexpected/unsafe members and unsupported package identity.
+13. From the home page, **Verify review package ZIP** can validate a previously exported package in the browser. The upload is checked in memory and is never added to a review session; verification does not restore findings/dispositions/mappings/references and does not establish approval, authority, readiness, or HeavyBid import validity.
 
 ## Run locally
 
@@ -32,7 +33,7 @@ python -m unittest discover -s tests -v
 python app/server.py
 ```
 
-Then open `http://127.0.0.1:8765`. The server binds only to the local machine; uploaded estimate/reference data is held only in temporary process memory by this application.
+Then open `http://127.0.0.1:8765`. The server binds only to the local machine; uploaded estimate/reference/package data is held only for the active local request/session behavior described above and is not remotely transmitted by this application.
 
 ## HeavyBid boundary
 
