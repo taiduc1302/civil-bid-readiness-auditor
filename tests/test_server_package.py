@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 
+from review_package import verify_review_package
 from server import Handler, ThreadingHTTPServer
 
 
@@ -57,7 +58,7 @@ class ServerPackageTests(unittest.TestCase):
         self.assertIn(b"Download review package ZIP", body)
         return token
 
-    def test_package_endpoint_returns_review_zip(self):
+    def test_package_endpoint_returns_verifiable_review_zip(self):
         token = self.audited_sample()
         status, headers, data = self.request("GET", f"/export/package?token={token}")
         self.assertEqual(status, 200)
@@ -65,11 +66,16 @@ class ServerPackageTests(unittest.TestCase):
         self.assertIn("review_package_v1.zip", headers["Content-Disposition"])
         with zipfile.ZipFile(io.BytesIO(data)) as book:
             self.assertIn("manifest.json", book.namelist())
+            self.assertIn("integrity.json", book.namelist())
             self.assertIn("findings.csv", book.namelist())
             self.assertIn("review.csv", book.namelist())
             manifest = json.loads(book.read("manifest.json"))
             self.assertEqual(manifest["source_filename"], "synthetic_civil_estimate.csv")
+            self.assertTrue(manifest["contents"]["integrity_metadata_included"])
             self.assertFalse(manifest["safety"]["HEAVYBID_IMPORT_VALIDATED"])
+        verified = verify_review_package(data)
+        self.assertTrue(verified["valid"])
+        self.assertFalse(verified["session_restored"])
 
     def test_missing_package_session_returns_safe_error(self):
         status, _, body = self.request("GET", "/export/package?token=missing")
