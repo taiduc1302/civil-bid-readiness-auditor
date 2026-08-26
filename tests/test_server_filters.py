@@ -57,7 +57,7 @@ class ServerFilterTests(unittest.TestCase):
         token = self.audited_sample()
         status, body = self.request("GET", f"/results?token={token}&severity=Priority")
         self.assertEqual(status, 200)
-        self.assertIn(b"Review filters", body)
+        self.assertIn(b"Review filters and view", body)
         self.assertIn(b"Visible:</strong> 11 of 14 findings", body)
         self.assertEqual(body.count(b"id='finding-"), 11)
         self.assertIn(b"Back to filters", body)
@@ -88,6 +88,42 @@ class ServerFilterTests(unittest.TestCase):
         self.assertIsNotNone(visible)
         self.assertGreater(int(visible.group(1)), 0)
         self.assertLess(int(visible.group(1)), 14)
+
+    def test_sort_and_group_controls_compose_with_filters(self):
+        token = self.audited_sample()
+        status, body = self.request(
+            "GET",
+            f"/results?token={token}&severity=Priority&sort_by=rule&group_by=rule",
+        )
+        self.assertEqual(status, 200)
+        self.assertIn(b"name='sort_by'", body)
+        self.assertIn(b"value='rule' selected", body)
+        self.assertIn(b"name='group_by'", body)
+        self.assertGreater(body.count(b"class='group-row'"), 1)
+        self.assertEqual(body.count(b"id='finding-"), 11)
+        self.assertIn(b"sort_by=rule", body)
+        self.assertIn(b"group_by=rule", body)
+
+    def test_accessibility_navigation_and_focus_targets_are_present(self):
+        token = self.audited_sample()
+        status, body = self.request("GET", f"/results?token={token}")
+        self.assertEqual(status, 200)
+        self.assertIn(b"aria-label='Review page navigation'", body)
+        self.assertIn(b"href='#filters'", body)
+        self.assertIn(b"href='#findings'", body)
+        self.assertIn(b"href='#references'", body)
+        self.assertIn(b"id='filters' tabindex='-1'", body)
+        self.assertIn(b"id='findings' tabindex='-1'", body)
+        self.assertIn(b"id='references' tabindex='-1'", body)
+        self.assertIn(b"<caption id='findings-caption'>", body)
+        self.assertIn(b":focus-visible", body)
+
+    def test_unknown_sort_and_group_parameters_fail_safe(self):
+        token = self.audited_sample()
+        status, body = self.request("GET", f"/results?token={token}&sort_by=unknown&group_by=unknown")
+        self.assertEqual(status, 200)
+        self.assertEqual(body.count(b"id='finding-"), 14)
+        self.assertNotIn(b"class='group-row'", body)
 
     def test_expired_results_token_is_safe(self):
         status, body = self.request("GET", "/results?token=missing")

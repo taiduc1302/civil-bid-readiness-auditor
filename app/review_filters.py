@@ -1,9 +1,14 @@
-"""Presentation-only filtering for deterministic findings and human review state."""
+"""Presentation-only filtering, sorting, and grouping for review findings."""
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Any
 
 SEVERITY_FILTERS = ("", "Priority", "Critical", "High", "Medium", "Low")
+SORT_OPTIONS = ("priority", "source", "rule", "sheet", "review_status")
+GROUP_OPTIONS = ("", "sheet", "rule", "review_status")
+_SEVERITY_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+_REVIEW_RANK = {"Needs correction": 0, "Open": 1, "Reviewed": 2, "Accepted": 3, "Suppressed": 4}
 
 
 def normalize_filter(value: Any) -> str:
@@ -57,6 +62,69 @@ def filter_findings(
                 continue
         filtered.append(finding)
     return filtered
+
+
+def _row_number(finding: dict[str, Any]) -> tuple[int, str]:
+    value = str(finding.get("row", "") or "").strip()
+    try:
+        return int(value), value
+    except ValueError:
+        return 10**12, value.casefold()
+
+
+def sort_findings(
+    findings: list[dict[str, Any]],
+    dispositions: dict[int, dict[str, str]],
+    sort_by: str = "priority",
+) -> list[dict[str, Any]]:
+    """Return a deterministic sorted copy with finding id as final tie-breaker."""
+    sort_by = normalize_filter(sort_by) or "priority"
+    if sort_by not in SORT_OPTIONS:
+        sort_by = "priority"
+
+    def review_status(finding: dict[str, Any]) -> str:
+        return dispositions.get(int(finding["id"]), {"status": "Open"}).get("status", "Open")
+
+    def key(finding: dict[str, Any]):
+        fid = int(finding.get("id", 0) or 0)
+        severity = str(finding.get("severity", ""))
+        sheet = str(finding.get("sheet", "")).casefold()
+        rule = str(finding.get("rule_id", "")).casefold()
+        row = _row_number(finding)
+        status = review_status(finding)
+        if sort_by == "source":
+            return (sheet, row, rule, fid)
+        if sort_by == "rule":
+            return (rule, sheet, row, fid)
+        if sort_by == "sheet":
+            return (sheet, row, rule, fid)
+        if sort_by == "review_status":
+            return (_REVIEW_RANK.get(status, 99), status.casefold(), _SEVERITY_RANK.get(severity, 99), sheet, row, fid)
+        return (_SEVERITY_RANK.get(severity, 99), sheet, row, rule, fid)
+
+    return sorted(list(findings), key=key)
+
+
+def group_findings(
+    findings: list[dict[str, Any]],
+    dispositions: dict[int, dict[str, str]],
+    group_by: str = "",
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    """Return ordered display groups without changing the finding order inside each group."""
+    group_by = normalize_filter(group_by)
+    if group_by not in GROUP_OPTIONS or not group_by:
+        return [("", list(findings))]
+
+    groups: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+    for finding in findings:
+        if group_by == "sheet":
+            label = str(finding.get("sheet", "") or "(no sheet)")
+        elif group_by == "rule":
+            label = str(finding.get("rule_id", "") or "(no rule)")
+        else:
+            label = str(dispositions.get(int(finding["id"]), {"status": "Open"}).get("status", "Open") or "Open")
+        groups.setdefault(label, []).append(finding)
+    return list(groups.items())
 
 
 def filter_options(result: dict[str, Any]) -> dict[str, list[str]]:
