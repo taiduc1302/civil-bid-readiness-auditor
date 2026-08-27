@@ -54,11 +54,26 @@ class ReferenceViewTests(unittest.TestCase):
         actual = sort_reference_results(self.results, "unknown")
         self.assertEqual(actual, expected)
 
-    def test_grouping_preserves_current_order(self):
+    def test_status_grouping_preserves_current_order_without_redundant_status_detail(self):
         ordered = sort_reference_results(self.results, "status")
         groups = group_reference_results(ordered, "status")
         self.assertEqual([label for label, _ in groups], ["NO_MATCH", "UNIT_MISMATCH", "NOT_CHECKED", "MATCH"])
         self.assertEqual(group_reference_results(ordered, "bad"), [("", ordered)])
+
+    def test_type_grouping_adds_status_composition_without_reordering_rows(self):
+        ordered = sort_reference_results(self.results, "status")
+        groups = group_reference_results(ordered, "type")
+        self.assertEqual(
+            [label for label, _ in groups],
+            [
+                "activity — NO_MATCH 1 · NOT_CHECKED 1",
+                "resource — UNIT_MISMATCH 1 · MATCH 1",
+            ],
+        )
+        self.assertEqual(
+            [[item["status"] for item in items] for _, items in groups],
+            [["NO_MATCH", "NOT_CHECKED"], ["UNIT_MISMATCH", "MATCH"]],
+        )
 
 
 if __name__ == "__main__":
