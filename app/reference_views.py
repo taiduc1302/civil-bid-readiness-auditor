@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Any
 
+from group_summaries import reference_group_details
 from reference_metadata import metadata_by_role
 
 REFERENCE_STATUS_FILTERS = ("Exceptions", "All", "NO_MATCH", "UNIT_MISMATCH", "NOT_CHECKED", "MATCH")
@@ -100,15 +101,24 @@ def sort_reference_results(results: list[dict[str, Any]], sort_by: str = "status
 def group_reference_results(
     results: list[dict[str, Any]], group_by: str = ""
 ) -> list[tuple[str, list[dict[str, Any]]]]:
-    """Group the current ordered view without reordering rows inside groups."""
+    """Group the current ordered view and add compact status composition where useful."""
     group_by = _text(group_by)
     if group_by not in REFERENCE_GROUP_OPTIONS or not group_by:
         return [("", list(results))]
     groups: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
     for item in results:
         if group_by == "status":
-            label = _text(item.get("status")) or "(no status)"
+            base_label = _text(item.get("status")) or "(no status)"
         else:
-            label = _text(item.get("reference_type")) or "(no type)"
-        groups.setdefault(label, []).append(item)
-    return list(groups.items())
+            base_label = _text(item.get("reference_type")) or "(no type)"
+        groups.setdefault(base_label, []).append(item)
+
+    rendered: list[tuple[str, list[dict[str, Any]]]] = []
+    for base_label, items in groups.items():
+        if group_by == "status":
+            rendered.append((base_label, items))
+            continue
+        details = reference_group_details(items)
+        label = base_label if not details else f"{base_label} — {details}"
+        rendered.append((label, items))
+    return rendered

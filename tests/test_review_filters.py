@@ -74,16 +74,30 @@ class ReviewFilterTests(unittest.TestCase):
         actual = sort_findings(self.result["findings"], self.dispositions, "not-a-sort")
         self.assertEqual([item["id"] for item in actual], [item["id"] for item in expected])
 
-    def test_grouping_preserves_current_order(self):
+    def test_grouping_preserves_current_order_and_adds_composition(self):
         ordered = sort_findings(self.result["findings"], self.dispositions, "priority")
         groups = group_findings(ordered, self.dispositions, "sheet")
-        self.assertEqual([label for label, _ in groups], ["Alternate", "Estimate"])
+        self.assertEqual(
+            [label for label, _ in groups],
+            [
+                "Alternate — Critical 1 · Needs correction 1",
+                "Estimate — High 2 · Medium 1 · Open 1",
+            ],
+        )
         self.assertEqual([[item["id"] for item in items] for _, items in groups], [[3], [4, 1, 2]])
 
     def test_review_status_grouping_and_unknown_group(self):
         ordered = sort_findings(self.result["findings"], self.dispositions, "review_status")
         groups = group_findings(ordered, self.dispositions, "review_status")
-        self.assertEqual([label for label, _ in groups], ["Needs correction", "Open", "Reviewed", "Suppressed"])
+        self.assertEqual(
+            [label for label, _ in groups],
+            [
+                "Needs correction — Critical 1 · Needs correction 1",
+                "Open — High 1 · Open 1",
+                "Reviewed — High 1",
+                "Suppressed — Medium 1",
+            ],
+        )
         self.assertEqual(group_findings(ordered, self.dispositions, "not-a-group"), [("", ordered)])
 
 
