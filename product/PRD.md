@@ -17,7 +17,7 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 7. Presentation-only review attention summary for Open findings, Needs correction findings, and governed reference exceptions, with explicit non-readiness empty-state language.
 8. Stable temporary findings navigation with filters for severity, review status, rule, sheet, and free text plus common quick views.
 9. Deterministic presentation-only findings sorting by priority, source, rule, sheet, or review status and optional grouping by sheet, rule, or review status. Group headings include compact severity/Open/Needs correction composition without hiding individual evidence rows.
-10. Keyboard-friendly skip links, focus targets, visible focus styling, and review-table caption/labels.
+10. Accessibility semantics across the public local UI: document language, one global skip-to-main link, an explicit focusable main landmark, visible focus styling, assertive alert semantics for errors, polite status semantics for notices, plus review-table caption/labels.
 11. Findings CSV, review-state CSV, governed-reference CSV, printable HTML management summary, and deterministic local ZIP review package.
 12. Review-package manifest containing mappings, reviewed sheets, finding/review/reference counts, source filename, package version, reference evidence metadata, and safety flags while excluding original estimate/reference bytes.
 13. Deterministic review-package integrity metadata plus an in-memory verifier for member names, allowed structure, byte sizes, SHA-256 values, and supported package identity. Integrity verification does not restore session state or establish approval/readiness.
@@ -31,7 +31,7 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 21. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
 22. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
 23. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
-24. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity, and control-gate fixtures with regression coverage.
+24. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity, accessibility, and control-gate fixtures with regression coverage.
 25. GitHub Actions test matrix on supported Python versions.
 
 ## Next product milestone
@@ -40,7 +40,6 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 
 - define any future review-package re-open/state-restoration workflow only after an explicit version/migration/ownership contract; package integrity verification and the read-only verification screen are built, session restoration is not;
 - consider carefully constrained bulk review actions only with explicit human ownership and fail-closed validation;
-- continue accessibility review for semantics beyond the current keyboard/focus pass;
 - evaluate additional fictional first-run guidance only when it demonstrates already-built behavior rather than implying reference authority or automatic decisions.
 
 ### P2 — governed estimating references
