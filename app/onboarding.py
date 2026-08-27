@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from accessibility import install_accessibility_semantics
+from bulk_review_ui import install_bulk_review_ui
 
 install_accessibility_semantics()
+install_bulk_review_ui()
 
 
 def guide_body() -> str:
@@ -27,6 +29,7 @@ def guide_body() -> str:
 <section class='card'>
 <h2>4. Record human dispositions</h2>
 <p>Try Reviewed, Needs correction, Accepted, or Suppressed on fictional findings. Suppressed requires a reason. Review state never edits the estimate or deterministic finding.</p>
+<p>For bulk practice, check only the individual fictional findings you intend to change, choose a target review state, acknowledge human ownership, and preview the exact rows before confirming. Filters never select hidden rows automatically.</p>
 </section>
 <section class='card'>
 <h2>5. Explore governed reference evidence</h2>
