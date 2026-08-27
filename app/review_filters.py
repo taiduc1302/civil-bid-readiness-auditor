@@ -4,6 +4,8 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Any
 
+from group_summaries import findings_group_details
+
 SEVERITY_FILTERS = ("", "Priority", "Critical", "High", "Medium", "Low")
 SORT_OPTIONS = ("priority", "source", "rule", "sheet", "review_status")
 GROUP_OPTIONS = ("", "sheet", "rule", "review_status")
@@ -110,7 +112,7 @@ def group_findings(
     dispositions: dict[int, dict[str, str]],
     group_by: str = "",
 ) -> list[tuple[str, list[dict[str, Any]]]]:
-    """Return ordered display groups without changing the finding order inside each group."""
+    """Return ordered display groups with compact composition in visible labels."""
     group_by = normalize_filter(group_by)
     if group_by not in GROUP_OPTIONS or not group_by:
         return [("", list(findings))]
@@ -118,13 +120,19 @@ def group_findings(
     groups: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
     for finding in findings:
         if group_by == "sheet":
-            label = str(finding.get("sheet", "") or "(no sheet)")
+            base_label = str(finding.get("sheet", "") or "(no sheet)")
         elif group_by == "rule":
-            label = str(finding.get("rule_id", "") or "(no rule)")
+            base_label = str(finding.get("rule_id", "") or "(no rule)")
         else:
-            label = str(dispositions.get(int(finding["id"]), {"status": "Open"}).get("status", "Open") or "Open")
-        groups.setdefault(label, []).append(finding)
-    return list(groups.items())
+            base_label = str(dispositions.get(int(finding["id"]), {"status": "Open"}).get("status", "Open") or "Open")
+        groups.setdefault(base_label, []).append(finding)
+
+    rendered: list[tuple[str, list[dict[str, Any]]]] = []
+    for base_label, items in groups.items():
+        details = findings_group_details(items, dispositions)
+        label = base_label if not details else f"{base_label} — {details}"
+        rendered.append((label, items))
+    return rendered
 
 
 def filter_options(result: dict[str, Any]) -> dict[str, list[str]]:
