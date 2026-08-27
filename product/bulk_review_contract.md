@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define a controlled boundary for bulk human finding dispositions. The current implementation can **plan** an explicit bulk action and **apply it to a new dispositions copy** after revalidating that the plan is still current. It does not mutate the browser session or expose a bulk-action UI.
+Define a controlled boundary for bulk human finding dispositions. The implementation can plan an explicit bulk action, apply it to a new dispositions copy after fail-closed revalidation, and expose that control through a two-step browser workflow using only individually checked findings.
 
 Bulk review is a human workflow convenience. It never changes deterministic findings, severity, audit metrics, the legacy score, estimate values, governed reference results, or HeavyBid safety state.
 
@@ -47,9 +47,22 @@ There is intentionally no implicit `all findings` target.
 
 If any deterministic finding identity or selected review state changed after planning, the plan is stale and application fails. The input `result` and `dispositions` objects remain unchanged on both success and failure; successful output is a separate mapping.
 
-## Browser/session gate remains unbuilt
+## Built browser/session gate
 
-No browser control currently calls the apply validator and no session mutation occurs automatically. A future browser layer may assign the returned mapping to the session only after an explicit user action and only after the validator succeeds. That assignment must be one atomic operation.
+`app/bulk_review_ui.py` installs a two-step browser flow on top of the same controls without changing the core audit engine:
+
+1. Each visible evidence row has its own **Select for bulk** checkbox.
+2. There is no select-all control. Filters, grouping, or hidden rows never become implicit selection.
+3. The user chooses the target human review status and reason/note and explicitly acknowledges ownership of the checked rows.
+4. **Preview bulk action** builds plan v2 and stores one temporary one-time plan token. Preview does not mutate dispositions.
+5. The preview page lists the exact selected IDs/rows, current states, target state, reason, count, and plan fingerprint.
+6. A second explicit confirmation is required to apply the previewed plan.
+7. Immediately before application, `apply_bulk_review_plan(...)` revalidates plan digest, finding identities, selected IDs, and expected current states.
+8. Only after validation succeeds is the returned mapping assigned to `session["dispositions"]` in one statement.
+9. A successful plan token is one-time. Replay is rejected. A newer preview replaces the older pending plan.
+10. A stale plan is consumed and rejected without partially updating the selected findings.
+
+Ordinary per-row **Save visible review states** remains available and is independent of the bulk ownership/preview controls.
 
 ## Explicit non-goals
 
@@ -61,6 +74,6 @@ No browser control currently calls the apply validator and no session mutation o
 - no changes to severity, finding text, score, quantity, rate, scope, or HeavyBid controls;
 - no claim that completing human review means the estimate or bid is correct or ready.
 
-## Future UI gate
+## Safety maintenance rule
 
-Before a browser bulk-apply control is added, it must expose the exact selected count, target status, reason, and human-ownership acknowledgement and preserve individual evidence rows. A filtered view must never become an implicit bulk scope. The UI must build a fresh plan from explicit selections and use the returned apply-to-copy result only after immediate validation.
+Any future bulk-review UX change must preserve explicit row selection, preview-before-apply, one-time plan semantics, immediate stale-state revalidation, and atomic session assignment. A filtered view must never become bulk scope by itself.
