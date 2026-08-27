@@ -8,7 +8,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 
-from bulk_review import PLAN_FORMAT, PLAN_VERSION, build_bulk_review_plan, finding_set_fingerprint
+from bulk_review import (
+    PLAN_FORMAT,
+    PLAN_VERSION,
+    _plan_digest,
+    apply_bulk_review_plan,
+    build_bulk_review_plan,
+    finding_set_fingerprint,
+)
 
 
 class BulkReviewPlanTests(unittest.TestCase):
@@ -51,6 +58,23 @@ class BulkReviewPlanTests(unittest.TestCase):
             3: {"status": "Needs correction", "reason": "Fix text"},
         }
 
+    @staticmethod
+    def rehash(plan: dict) -> dict:
+        plan = copy.deepcopy(plan)
+        core = {key: value for key, value in plan.items() if key != "plan_sha256"}
+        plan["plan_sha256"] = _plan_digest(core)
+        return plan
+
+    def plan(self, ids=(1, 2), status="Accepted", reason="Selected findings reviewed"):
+        return build_bulk_review_plan(
+            self.result,
+            self.dispositions,
+            ids,
+            status,
+            reason,
+            ownership_acknowledged=True,
+        )
+
     def test_plan_requires_explicit_human_ownership(self):
         with self.assertRaisesRegex(ValueError, "human-ownership"):
             build_bulk_review_plan(self.result, self.dispositions, [1], "Reviewed")
@@ -87,6 +111,7 @@ class BulkReviewPlanTests(unittest.TestCase):
         self.assertFalse(plan["changes_score"])
         self.assertRegex(plan["finding_set_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(plan["target_findings_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(plan["plan_sha256"], r"^[0-9a-f]{64}$")
 
     def test_suppression_uses_existing_reason_rule(self):
         with self.assertRaisesRegex(ValueError, "require a review reason"):
@@ -178,6 +203,96 @@ class BulkReviewPlanTests(unittest.TestCase):
                 "Reviewed",
                 ownership_acknowledged=True,
             )
+
+    def test_apply_returns_new_map_and_changes_only_explicit_targets(self):
+        result_before = copy.deepcopy(self.result)
+        dispositions_before = copy.deepcopy(self.dispositions)
+        plan = self.plan()
+        applied = apply_bulk_review_plan(self.result, self.dispositions, plan)
+
+        self.assertIsNot(applied, self.dispositions)
+        self.assertEqual(applied[1], {"status": "Accepted", "reason": "Selected findings reviewed"})
+        self.assertEqual(applied[2], {"status": "Accepted", "reason": "Selected findings reviewed"})
+        self.assertEqual(applied[3], self.dispositions[3])
+        self.assertEqual(self.result, result_before)
+        self.assertEqual(self.dispositions, dispositions_before)
+
+    def test_apply_can_materialize_default_open_state_on_copy_only(self):
+        dispositions = {2: {"status": "Reviewed", "reason": "Checked manually"}}
+        plan = build_bulk_review_plan(
+            self.result,
+            dispositions,
+            [1],
+            "Reviewed",
+            ownership_acknowledged=True,
+        )
+        applied = apply_bulk_review_plan(self.result, dispositions, plan)
+        self.assertNotIn(1, dispositions)
+        self.assertEqual(applied[1], {"status": "Reviewed", "reason": ""})
+
+    def test_apply_rejects_unsupported_plan_identity_and_missing_digest(self):
+        plan = self.plan()
+        wrong_version = copy.deepcopy(plan)
+        wrong_version["plan_version"] = PLAN_VERSION - 1
+        with self.assertRaisesRegex(ValueError, "format/version"):
+            apply_bulk_review_plan(self.result, self.dispositions, wrong_version)
+
+        missing_digest = copy.deepcopy(plan)
+        missing_digest.pop("plan_sha256")
+        with self.assertRaisesRegex(ValueError, "SHA-256"):
+            apply_bulk_review_plan(self.result, self.dispositions, missing_digest)
+
+    def test_apply_rejects_plan_content_tampering(self):
+        plan = self.plan()
+        plan["target_status"] = "Reviewed"
+        with self.assertRaisesRegex(ValueError, "SHA-256 does not match"):
+            apply_bulk_review_plan(self.result, self.dispositions, plan)
+
+    def test_apply_rejects_rehashed_relaxed_safety_flags_and_bad_count(self):
+        for flag in ("apply_automatically", "mutates_deterministic_findings", "mutates_reference_results", "changes_score"):
+            with self.subTest(flag=flag):
+                tampered = self.plan()
+                tampered[flag] = True
+                tampered = self.rehash(tampered)
+                with self.assertRaisesRegex(ValueError, "automatic application|relaxed safety flag"):
+                    apply_bulk_review_plan(self.result, self.dispositions, tampered)
+
+        bad_count = self.plan()
+        bad_count["target_count"] = 99
+        bad_count = self.rehash(bad_count)
+        with self.assertRaisesRegex(ValueError, "target count"):
+            apply_bulk_review_plan(self.result, self.dispositions, bad_count)
+
+    def test_apply_rejects_deterministic_finding_drift(self):
+        plan = self.plan()
+        changed = copy.deepcopy(self.result)
+        changed["findings"][2]["message"] = "Unselected finding also changed"
+        with self.assertRaisesRegex(ValueError, "finding set changed"):
+            apply_bulk_review_plan(changed, self.dispositions, plan)
+
+    def test_apply_rejects_current_review_state_drift(self):
+        plan = self.plan()
+        changed = copy.deepcopy(self.dispositions)
+        changed[1] = {"status": "Reviewed", "reason": "Someone reviewed it after planning"}
+        changed_before = copy.deepcopy(changed)
+        with self.assertRaisesRegex(ValueError, "current review state changed"):
+            apply_bulk_review_plan(self.result, changed, plan)
+        self.assertEqual(changed, changed_before)
+
+    def test_apply_revalidates_target_status_rules_even_with_rehashed_plan(self):
+        plan = self.plan()
+        plan["target_status"] = "Suppressed"
+        plan["reason"] = ""
+        plan = self.rehash(plan)
+        with self.assertRaisesRegex(ValueError, "require a review reason"):
+            apply_bulk_review_plan(self.result, self.dispositions, plan)
+
+    def test_apply_rejects_rehashed_expected_state_id_mismatch(self):
+        plan = self.plan()
+        plan["expected_current_states"][0]["id"] = 3
+        plan = self.rehash(plan)
+        with self.assertRaisesRegex(ValueError, "ids do not match"):
+            apply_bulk_review_plan(self.result, self.dispositions, plan)
 
 
 if __name__ == "__main__":

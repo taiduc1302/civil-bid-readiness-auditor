@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Define a controlled boundary for any future bulk human-disposition workflow. The current implementation can **plan and validate** an explicit bulk action; it does not apply one.
+Define a controlled boundary for bulk human finding dispositions. The current implementation can **plan** an explicit bulk action and **apply it to a new dispositions copy** after revalidating that the plan is still current. It does not mutate the browser session or expose a bulk-action UI.
 
 Bulk review is a human workflow convenience. It never changes deterministic findings, severity, audit metrics, the legacy score, estimate values, governed reference results, or HeavyBid safety state.
 
-## Current built layer: planning only
+## Built planning contract
 
-`app/bulk_review.py` creates a plan only when all of the following are true:
+`app/bulk_review.py` creates an apply-ready plan only when all of the following are true:
 
 - the caller explicitly supplies one or more finding IDs;
 - every selected ID exists in the current deterministic finding set;
@@ -17,31 +17,39 @@ Bulk review is a human workflow convenience. It never changes deterministic find
 - `Suppressed` includes a nonblank reason;
 - human ownership is explicitly acknowledged with the boolean value `True`.
 
-The planner records:
+Plan version 2 records:
 
-- plan format/version;
 - exact ordered target IDs and count;
 - requested status/reason;
-- the expected current status/reason for every target;
+- expected current status/reason for every target;
 - SHA-256 of the full deterministic finding identity set;
 - SHA-256 of the selected finding identities;
-- explicit flags that the plan is not automatically applied and does not mutate deterministic/reference data or score.
+- a SHA-256 content digest for the plan itself;
+- explicit safety flags stating that deterministic/reference data and score are not changed and automatic application is disabled.
 
-There is intentionally no implicit `all findings` target and no browser bulk-apply control in this layer.
+The plan SHA-256 is a local integrity check, not authentication or a cryptographic proof of reviewer authority.
 
-## Stale-session protection for a future apply step
+There is intentionally no implicit `all findings` target.
 
-A future apply implementation must fail closed unless all of these still match the approved plan immediately before mutation:
+## Built pure apply-to-copy validator
 
-1. plan format/version;
-2. full finding-set SHA-256;
-3. selected finding identity SHA-256;
-4. exact selected finding IDs;
-5. expected current human status/reason for every selected finding;
+`apply_bulk_review_plan(...)` returns a new dispositions mapping only after all controls still match immediately before application:
+
+1. supported plan format/version;
+2. valid plan content digest;
+3. explicit human ownership acknowledgement;
+4. non-relaxed safety flags;
+5. exact selected finding IDs and target count;
 6. supported target status and suppression-reason rule;
-7. explicit human ownership acknowledgement.
+7. full finding-set SHA-256;
+8. selected finding identity SHA-256;
+9. exact expected current status/reason for every selected finding.
 
-If any deterministic finding identity or selected review state changed after planning, the plan is stale and must be rebuilt. A future apply operation must be atomic: either every selected disposition is updated or none are.
+If any deterministic finding identity or selected review state changed after planning, the plan is stale and application fails. The input `result` and `dispositions` objects remain unchanged on both success and failure; successful output is a separate mapping.
+
+## Browser/session gate remains unbuilt
+
+No browser control currently calls the apply validator and no session mutation occurs automatically. A future browser layer may assign the returned mapping to the session only after an explicit user action and only after the validator succeeds. That assignment must be one atomic operation.
 
 ## Explicit non-goals
 
@@ -55,4 +63,4 @@ If any deterministic finding identity or selected review state changed after pla
 
 ## Future UI gate
 
-Before a browser bulk-apply control is added, it should expose the exact selected count, target status, reason, and human-ownership acknowledgement and must preserve individual evidence rows. The UI must not turn a filtered view into an implicit bulk scope.
+Before a browser bulk-apply control is added, it must expose the exact selected count, target status, reason, and human-ownership acknowledgement and preserve individual evidence rows. A filtered view must never become an implicit bulk scope. The UI must build a fresh plan from explicit selections and use the returned apply-to-copy result only after immediate validation.
