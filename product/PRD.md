@@ -16,7 +16,7 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 6. Human finding dispositions stored only in the temporary local session; suppression requires a reason.
 7. Presentation-only review attention summary for Open findings, Needs correction findings, and governed reference exceptions, with explicit non-readiness empty-state language.
 8. Stable temporary findings navigation with filters for severity, review status, rule, sheet, and free text plus common quick views.
-9. Deterministic presentation-only findings sorting by priority, source, rule, sheet, or review status and optional grouping by sheet, rule, or review status.
+9. Deterministic presentation-only findings sorting by priority, source, rule, sheet, or review status and optional grouping by sheet, rule, or review status. Group headings include compact severity/Open/Needs correction composition without hiding individual evidence rows.
 10. Keyboard-friendly skip links, focus targets, visible focus styling, and review-table caption/labels.
 11. Findings CSV, review-state CSV, governed-reference CSV, printable HTML management summary, and deterministic local ZIP review package.
 12. Review-package manifest containing mappings, reviewed sheets, finding/review/reference counts, source filename, package version, reference evidence metadata, and safety flags while excluding original estimate/reference bytes.
@@ -24,7 +24,7 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 14. A local read-only review-package verification screen that accepts one ZIP, runs the verifier in memory, displays package/integrity evidence, and never creates/restores a review session.
 15. Exact Activity/Resource code + unit validation against explicitly supplied governed reference snapshots.
 16. Governed reference evidence metadata: role, filename, user-supplied revision/label, byte size, SHA-256, and explicit `NOT_ESTABLISHED_BY_APP` authority state.
-17. Presentation-only governed reference result views: Exceptions by default, status/type filters, metadata-aware search, deterministic sort by status/source/code/type, optional grouping by status/type, and composed `/results` state with findings views.
+17. Presentation-only governed reference result views: Exceptions by default, status/type filters, metadata-aware search, deterministic sort by status/source/code/type, optional grouping by status/type, compact status composition in reference-type group headings, and composed `/results` state with findings views.
 18. Optional evidence-only Crew Code / Production Rate comparison when values are explicit on both source and approved reference.
 19. Local fictional onboarding walkthrough covering mapping, review views, dispositions, governed reference evidence, and review-package export using bundled training data only.
 20. Fixed one-click fictional structured demo kit: exactly one bundled HeavyBid-style synthetic estimate plus fixed Activity/Resource reference-download routes; references remain manual and are never auto-applied.
@@ -41,7 +41,6 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 - define any future review-package re-open/state-restoration workflow only after an explicit version/migration/ownership contract; package integrity verification and the read-only verification screen are built, session restoration is not;
 - consider carefully constrained bulk review actions only with explicit human ownership and fail-closed validation;
 - continue accessibility review for semantics beyond the current keyboard/focus pass;
-- evaluate whether a compact per-group summary improves large review sessions without hiding individual evidence rows;
 - evaluate additional fictional first-run guidance only when it demonstrates already-built behavior rather than implying reference authority or automatic decisions.
 
 ### P2 — governed estimating references
