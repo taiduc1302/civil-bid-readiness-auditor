@@ -1,6 +1,10 @@
 """Static fictional onboarding content for the local review workflow."""
 from __future__ import annotations
 
+from accessibility import install_accessibility_semantics
+
+install_accessibility_semantics()
+
 
 def guide_body() -> str:
     return """
