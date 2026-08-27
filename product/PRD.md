@@ -29,20 +29,21 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 19. Local fictional onboarding walkthrough covering mapping, review views, dispositions, governed reference evidence, and review-package export using bundled training data only.
 20. Fixed one-click fictional structured demo kit: exactly one bundled HeavyBid-style synthetic estimate plus fixed Activity/Resource reference-download routes; references remain manual and are never auto-applied.
 21. Fail-closed bulk finding review plan v2: explicit selected finding IDs only, supported human statuses, suppression reason control, explicit human-ownership acknowledgement, expected current review states, full/selected finding fingerprints, and a plan content SHA-256 integrity check.
-22. Pure atomic bulk review apply-to-copy validation: revalidates plan identity/digest, safety flags, targets/count, status/reason, full and selected finding fingerprints, and exact expected current states before returning a separate dispositions mapping. Inputs remain unchanged and no browser/session bulk mutation is wired.
-23. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
-24. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
-25. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
-26. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity, accessibility, bulk-review planning/application, and control-gate fixtures with regression coverage.
-27. GitHub Actions test matrix on supported Python versions.
+22. Pure atomic bulk review apply-to-copy validation: revalidates plan identity/digest, safety flags, targets/count, status/reason, full and selected finding fingerprints, and exact expected current states before returning a separate dispositions mapping. Inputs remain unchanged.
+23. Explicit-selection two-step browser bulk review: individually checked findings only, no select-all or implicit filtered-view scope, target status/reason plus ownership acknowledgement, preview with exact rows and no mutation, separate confirmation, one-time plan token, immediate plan revalidation, and one atomic session dispositions assignment only after validation succeeds. Stale/replayed/replaced plans fail closed.
+24. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
+25. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
+26. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
+27. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity, accessibility, bulk-review planning/application/UI, and control-gate fixtures with regression coverage.
+28. GitHub Actions test matrix on supported Python versions.
 
 ## Next product milestone
 
 ### P1 — review UX hardening
 
 - define any future review-package re-open/state-restoration workflow only after an explicit version/migration/ownership contract; package integrity verification and the read-only verification screen are built, session restoration is not;
-- implement any future browser bulk-review control only by building a fresh explicit-selection plan and using the pure apply-to-copy validator immediately before one atomic session assignment; no filtered view may become an implicit bulk scope;
-- evaluate additional fictional first-run guidance only when it demonstrates already-built behavior rather than implying reference authority or automatic decisions.
+- evaluate additional fictional first-run guidance only when it demonstrates already-built behavior rather than implying reference authority or automatic decisions;
+- keep bulk actions limited to explicit selections and preserve one-time preview/revalidation semantics; do not add select-all or implicit view-based scope.
 
 ### P2 — governed estimating references
 
@@ -66,7 +67,7 @@ The writer must:
 
 ## Deferred / not built
 
-Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, review-package session restoration/re-open, browser bulk-review controls/session mutation, direct HeavyBid database/API access, and production import automation.
+Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, review-package session restoration/re-open, direct HeavyBid database/API access, and production import automation.
 
 ## Non-goals and safeguards
 
