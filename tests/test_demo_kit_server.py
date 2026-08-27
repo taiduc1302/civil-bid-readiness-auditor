@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 
+from demo_kit import reference_fixture
 from server import Handler, SESSIONS, ThreadingHTTPServer
 
 
@@ -48,18 +49,21 @@ class DemoKitServerTests(unittest.TestCase):
         self.assertIn(b"References are never auto-applied", page)
         self.assertEqual(SESSIONS, {})
 
-    def test_fixed_reference_downloads_are_synthetic_csvs_and_create_no_session(self):
+    def test_fixed_reference_downloads_are_exact_synthetic_fixtures_and_create_no_session(self):
+        expected_activity_name, expected_activity = reference_fixture("activity")
+        expected_resource_name, expected_resource = reference_fixture("resource")
+
         status, headers, activity = self.request("GET", "/demo/reference/activity")
         self.assertEqual(status, 200)
         self.assertIn("text/csv", headers["Content-Type"])
-        self.assertIn("synthetic_activity_reference.csv", headers["Content-Disposition"])
-        self.assertTrue(activity.startswith(b"activity_code,"))
+        self.assertIn(expected_activity_name, headers["Content-Disposition"])
+        self.assertEqual(activity, expected_activity)
 
         status, headers, resource = self.request("GET", "/demo/reference/resource")
         self.assertEqual(status, 200)
         self.assertIn("text/csv", headers["Content-Type"])
-        self.assertIn("synthetic_resource_reference.csv", headers["Content-Disposition"])
-        self.assertTrue(resource.startswith(b"resource_code,"))
+        self.assertIn(expected_resource_name, headers["Content-Disposition"])
+        self.assertEqual(resource, expected_resource)
         self.assertEqual(SESSIONS, {})
 
     def test_structured_demo_opens_editable_mapping_without_auto_applying_references(self):
