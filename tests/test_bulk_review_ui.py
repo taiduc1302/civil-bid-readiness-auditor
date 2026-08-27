@@ -96,7 +96,7 @@ class BulkReviewUiTests(unittest.TestCase):
         self.assertIn(b"name='bulk_id' value='1'", body)
         self.assertIn(b"Bulk review explicitly selected findings", body)
         self.assertIn(b"Preview bulk action", body)
-        self.assertIn(b"Filters, grouping, or hidden rows never select findings automatically", body)
+        self.assertIn(b"Current filters, grouping, or hidden rows never select findings automatically", body)
         self.assertNotIn(b"Select all", body)
         self.assertIn(token.encode(), body)
 
@@ -163,7 +163,6 @@ class BulkReviewUiTests(unittest.TestCase):
         token, _ = self.audited_sample()
         _, _, plan_token = self.preview(token, [1, 2], status="Accepted", reason="Previewed together")
 
-        # A separate human review action changes only target 2 after preview.
         form = [("token", token), ("status__2", "Needs correction"), ("reason__2", "Changed after preview")]
         status, _, _ = self.post_form("/review", form)
         self.assertEqual(status, 200)
