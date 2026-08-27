@@ -31,6 +31,8 @@ Run the audit and inspect:
 - sheet and source-row evidence;
 - rule id, message, evidence, and recommended action.
 
+Use the Review attention summary to see current Open / Needs correction findings. These are attention counts, not readiness or approval.
+
 Learning goal: findings are deterministic prompts requiring human review.
 
 ## 4. Use review views
@@ -43,7 +45,7 @@ Try several presentation-only views:
 - sort by source row, rule, sheet, review status, or priority;
 - group by sheet, rule, or review status.
 
-Use the skip links to move between filters, findings, and reference sections with the keyboard.
+Use the skip links to move between attention, filters, findings, and reference sections with the keyboard.
 
 Learning goal: filtering/sorting/grouping does not change findings, severity, score, or saved review state.
 
@@ -60,9 +62,22 @@ Suppressed findings require a reason. Saving a disposition does not modify the s
 
 Learning goal: human review state is separate from audit output.
 
-## 6. Try governed reference evidence on the HeavyBid-style fictional fixture
+## 6. Start the one-click structured fictional demo
 
-For the reference portion of the walkthrough, start a new audit using the bundled fictional HeavyBid-style resource export fixture and map its hierarchy/resource fields. Then upload the bundled fictional Activity and/or Resource reference CSV.
+Return to the local **Fictional onboarding walkthrough** page and choose **Run structured fictional sample**. This loads exactly the bundled `synthetic_heavybid_style_resource_export.csv` and opens the normal editable mapping page.
+
+The HeavyBid-style mapping may be preselected using supported exact aliases, but it remains editable and reviewable. No audit or reference validation is run automatically.
+
+Learning goal: structured profile detection is a mapping convenience, not approval or direct HeavyBid integration.
+
+## 7. Download and manually apply fictional reference snapshots
+
+From the guide, use:
+
+- **Download fictional Activity reference CSV** → `synthetic_activity_reference.csv`
+- **Download fictional Resource reference CSV** → `synthetic_resource_reference.csv`
+
+After auditing the structured fictional estimate, upload one or both files manually in **Governed reference validation**. References are never auto-applied by the demo.
 
 Optionally enter a revision/label such as `Training Rev A`.
 
@@ -77,7 +92,7 @@ Inspect the recorded evidence metadata:
 
 Learning goal: filename/revision/hash improve traceability but do not establish that a reference is current, approved, or authoritative.
 
-## 7. Review reference checks
+## 8. Review reference checks
 
 Reference results can include:
 
@@ -86,15 +101,18 @@ Reference results can include:
 - NO_MATCH
 - NOT_CHECKED
 
+The default view shows Exceptions. You can filter by status/type, search reference metadata, sort, and group without changing the stored checks.
+
 The tool does not invent replacement codes or perform physical unit conversion.
 
 Learning goal: a MATCH is evidence of an exact lookup against the supplied snapshot, not approval of the codebook or a HeavyBid import.
 
-## 8. Export the review package
+## 9. Export and verify the review package
 
 Choose **Download review package ZIP**. The deterministic review snapshot can contain:
 
 - `manifest.json`
+- `integrity.json`
 - `findings.csv`
 - `review.csv`
 - `summary.html`
@@ -102,6 +120,8 @@ Choose **Download review package ZIP**. The deterministic review snapshot can co
 - `references.csv` when governed reference checks exist
 
 The original estimate/reference file bytes are intentionally excluded.
+
+Return to the home page and choose **Verify review package ZIP** to check the recorded member structure and SHA-256 values in memory. Verification does not restore the review session.
 
 Learning goal: the ZIP is a portable review snapshot, not a saved project database, bid approval, or HeavyBid artifact.
 
