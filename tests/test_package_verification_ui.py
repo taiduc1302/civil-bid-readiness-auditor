@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import http.client
+import io
+import json
 import sys
 import threading
 import unittest
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,7 +14,7 @@ sys.path.insert(0, str(ROOT / "app"))
 
 from audit_engine import audit, parse_upload
 from finding_review import default_dispositions
-from review_package import build_review_package
+from review_package import build_review_package, integrity_manifest
 from server import Handler, SESSIONS, ThreadingHTTPServer
 
 
@@ -69,6 +72,23 @@ class PackageVerificationUiTests(unittest.TestCase):
             "mappings": {},
         })
 
+    def rehash_with_relaxed_safety(self, package: bytes) -> bytes:
+        with zipfile.ZipFile(io.BytesIO(package), "r") as book:
+            members = {name: book.read(name) for name in book.namelist() if name != "integrity.json"}
+        manifest = json.loads(members["manifest.json"].decode("utf-8"))
+        manifest["safety"]["bid_certified"] = True
+        members["manifest.json"] = (
+            json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+        ).encode("utf-8")
+        members["integrity.json"] = (
+            json.dumps(integrity_manifest(members), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+        ).encode("utf-8")
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as book:
+            for name in sorted(members):
+                book.writestr(name, members[name])
+        return output.getvalue()
+
     def test_home_and_get_verifier_are_available_without_session(self):
         status, home = self.request("GET", "/")
         self.assertEqual(status, 200)
@@ -82,7 +102,7 @@ class PackageVerificationUiTests(unittest.TestCase):
         self.assertIn(b"never restores", page)
         self.assertEqual(SESSIONS, {})
 
-    def test_valid_package_verifies_without_creating_session(self):
+    def test_valid_package_verifies_and_previews_without_creating_session(self):
         package, filename = self.review_package()
         body, headers = self.multipart(filename, package)
         before = dict(SESSIONS)
@@ -91,9 +111,25 @@ class PackageVerificationUiTests(unittest.TestCase):
         self.assertIn(b"Integrity verification passed", page)
         self.assertIn(filename.encode(), page)
         self.assertIn(b"civil-estimate-review-package", page)
+        self.assertIn(b"Read-only review snapshot preview", page)
+        self.assertIn(b"Finding review snapshot", page)
+        self.assertIn(b"Reference evidence metadata", page)
         self.assertIn(b"No review session was restored", page)
+        self.assertIn(b"No findings, dispositions, mappings, references, approvals, or source files were restored", page)
         self.assertIn(b"does not establish estimate correctness", page)
+        self.assertNotIn(b"Restore session", page)
         self.assertEqual(SESSIONS, before)
+
+    def test_semantically_invalid_but_rehashed_package_fails_without_session(self):
+        package, filename = self.review_package()
+        changed = self.rehash_with_relaxed_safety(package)
+        body, headers = self.multipart(filename, changed)
+        status, page = self.request("POST", "/verify-package", body, headers)
+        self.assertEqual(status, 400)
+        self.assertIn(b"Verification failed", page)
+        self.assertIn(b"safety state", page)
+        self.assertNotIn(b"Read-only review snapshot preview", page)
+        self.assertEqual(SESSIONS, {})
 
     def test_tampered_package_fails_without_creating_session(self):
         package, filename = self.review_package()
