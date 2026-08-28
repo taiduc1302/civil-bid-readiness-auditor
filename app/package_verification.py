@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from audit_engine import InputError
+from package_preview import snapshot_preview_body
 
 MAX_UI_PACKAGE_UPLOAD_BYTES = 26 * 1024 * 1024
 
@@ -41,8 +42,13 @@ def read_package_upload(message: Any) -> tuple[str, bytes]:
     return filename, payload
 
 
-def verification_page_body(result: dict[str, Any] | None = None, filename: str = "", error: str = "") -> str:
-    """Render the read-only verifier page; never offer state restoration controls."""
+def verification_page_body(
+    result: dict[str, Any] | None = None,
+    filename: str = "",
+    error: str = "",
+    preview: dict[str, Any] | None = None,
+) -> str:
+    """Render verifier + optional read-only snapshot preview; never offer restoration controls."""
     alert = f"<div class='error'><strong>Verification failed.</strong> {html.escape(error)}</div>" if error else ""
     verified = ""
     if result:
@@ -59,13 +65,15 @@ def verification_page_body(result: dict[str, Any] | None = None, filename: str =
 <div class='notice'><strong>Integrity only.</strong> This proves only that the ZIP matches its recorded structure and member hashes. No review session was restored. It does not establish estimate correctness, estimator approval, reference authority, bid readiness, or HeavyBid import validity.</div>
 </section>"""
 
-    return f"""{alert}{verified}
+    resolved_preview = preview or (result.get("snapshot_preview") if result else None)
+    preview_html = snapshot_preview_body(resolved_preview) if resolved_preview else ""
+    return f"""{alert}{verified}{preview_html}
 <section class='card'>
 <h2>Verify a review package</h2>
-<p>Select a review-package ZIP created by this app. Verification runs locally in memory. Uploaded package bytes are not added to a review session and are not written to disk by this application.</p>
+<p>Select a review-package ZIP created by this app. Verification and read-only snapshot inspection run locally in memory. Uploaded package bytes are not added to a review session and are not written to disk by this application.</p>
 <form action='/verify-package' method='post' enctype='multipart/form-data'>
 <label>Review package ZIP <input type='file' name='review_package' accept='.zip,application/zip' required></label>
-<p><button type='submit'>Verify package integrity</button> <a href='/'>Back to home</a></p>
+<p><button type='submit'>Verify and preview package</button> <a href='/'>Back to home</a></p>
 </form>
-<p class='visually-helpful'>The local browser upload route accepts packages up to 26 MB. A successful integrity check never restores findings, dispositions, mappings, references, or approvals.</p>
+<p class='visually-helpful'>The local browser upload route accepts packages up to 26 MB. A successful integrity/semantic preview never restores findings, dispositions, mappings, references, source files, or approvals.</p>
 </section>"""
