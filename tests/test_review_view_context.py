@@ -151,6 +151,28 @@ class ReviewViewContextServerTests(unittest.TestCase):
         self.assertEqual(SESSIONS[token]["dispositions"][1]["status"], "Reviewed")
         self.assert_view_preserved(body)
 
+    def test_review_validation_error_preserves_local_return_view_and_state(self):
+        token, _ = self.audited_sample()
+        query = self.view_query()
+        before = dict(SESSIONS[token]["dispositions"][1])
+        status, _, body = self.post_form(
+            "/review",
+            [
+                ("token", token),
+                ("status__1", "Suppressed"),
+                ("reason__1", ""),
+                ("view_query", query + "&next=https%3A%2F%2Fevil.example"),
+            ],
+        )
+        self.assertEqual(status, 400)
+        self.assertIn(b"Suppressed findings require a review reason", body)
+        self.assertIn(f"/results?token={token}".encode(), body)
+        self.assertIn(b"severity=Priority", body)
+        self.assertIn(b"sort_by=source", body)
+        self.assertNotIn(b"evil.example", body)
+        self.assertNotIn(b"next=", body)
+        self.assertEqual(SESSIONS[token]["dispositions"][1], before)
+
     def test_bulk_preview_cancel_and_apply_preserve_view(self):
         token, _ = self.audited_sample()
         query = self.view_query()
@@ -168,8 +190,9 @@ class ReviewViewContextServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         plan_token = re.search(rb"name='plan_token' value='([^']+)'", preview).group(1).decode()
         self.assertIn(b"Cancel and return to findings", preview)
-        self.assertIn(b"severity%3DPriority", preview)
-        self.assertIn(b"ref_group%3Dtype", preview)
+        self.assertIn(b"severity=Priority", preview)
+        self.assertIn(b"sort_by=source", preview)
+        self.assertIn(b"ref_group=type", preview)
 
         status, _, body = self.post_form(
             "/bulk-review/apply",
