@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from accessibility import install_accessibility_semantics
 from bulk_review_ui import install_bulk_review_ui
+from review_view_context import install_review_view_context
 
 install_accessibility_semantics()
 install_bulk_review_ui()
+install_review_view_context()
 
 
 def guide_body() -> str:
@@ -25,6 +27,7 @@ def guide_body() -> str:
 <h2>3. Work the review queue</h2>
 <p>Use the attention summary, Priority/Open quick views, free-text search, and filters. Sort by priority, source, rule, sheet, or review status; optionally group by sheet, rule, or review status.</p>
 <p>Use the page skip links to move between attention, filters, findings, and references with the keyboard.</p>
+<p>When you save visible review states or use the two-step bulk review flow, the current review-view filters, sorting, grouping, searches, and reference-view settings are preserved when the browser supplies its current local results query.</p>
 </section>
 <section class='card'>
 <h2>4. Record human dispositions</h2>

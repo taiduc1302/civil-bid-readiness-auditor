@@ -9,11 +9,12 @@ from __future__ import annotations
 import html
 import secrets
 from http import HTTPStatus
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 import server_legacy as _server
 from bulk_review import apply_bulk_review_plan, build_bulk_review_plan
 from finding_review import REVIEW_STATUSES
+from review_view_context import results_return_url, sanitize_view_query, view_filters
 
 _MAX_FORM_BYTES = 512 * 1024
 
@@ -86,7 +87,7 @@ def _session(token: str) -> dict:
     return session
 
 
-def _preview_page(token: str, plan_token: str, session: dict, plan: dict) -> bytes:
+def _preview_page(token: str, plan_token: str, session: dict, plan: dict, view_query: str = "") -> bytes:
     findings = {int(item["id"]): item for item in session["result"].get("findings", [])}
     current = {item["id"]: item for item in plan["expected_current_states"]}
     rows = "".join(
@@ -103,6 +104,7 @@ def _preview_page(token: str, plan_token: str, session: dict, plan: dict) -> byt
         for finding_id in plan["target_ids"]
     )
     reason = html.escape(str(plan.get("reason", ""))) or "(blank)"
+    return_url = html.escape(results_return_url(token, view_query), quote=True)
     return _server.page(
         "Bulk review preview",
         f"""
@@ -119,8 +121,9 @@ def _preview_page(token: str, plan_token: str, session: dict, plan: dict) -> byt
 <form action='/bulk-review/apply' method='post'>
 <input type='hidden' name='token' value='{html.escape(token, quote=True)}'>
 <input type='hidden' name='plan_token' value='{html.escape(plan_token, quote=True)}'>
+<input type='hidden' name='view_query' value='{html.escape(view_query, quote=True)}'>
 <p><label><input type='checkbox' name='confirm_bulk_apply' value='yes'> Confirm applying this one-time plan to exactly these {plan['target_count']} finding(s).</label></p>
-<p><button type='submit'>Apply bulk review action</button> <a href='/results?token={quote(token, safe='')}#findings'>Cancel and return to findings</a></p>
+<p><button type='submit'>Apply bulk review action</button> <a href='{return_url}'>Cancel and return to findings</a></p>
 </form>
 <p class='visually-helpful'>Application revalidates the plan digest, finding fingerprints, target IDs, and expected current states immediately before one atomic session assignment. A stale or replayed plan is rejected.</p>
 </section>
@@ -128,11 +131,11 @@ def _preview_page(token: str, plan_token: str, session: dict, plan: dict) -> byt
     )
 
 
-def _error_page(message: str, token: str = "") -> bytes:
-    back = f"/results?token={quote(token, safe='')}#findings" if token else "/"
+def _error_page(message: str, token: str = "", view_query: str = "") -> bytes:
+    back = results_return_url(token, view_query) if token else "/"
     return _server.page(
         "Bulk review not applied",
-        f"<div class='error'>{html.escape(message)}</div><p><a href='{back}'>Return to review</a></p>",
+        f"<div class='error'>{html.escape(message)}</div><p><a href='{html.escape(back, quote=True)}'>Return to review</a></p>",
     )
 
 
@@ -144,6 +147,7 @@ def _handle_preview(handler: _server.BaseHTTPRequestHandler, form: dict[str, lis
     status = _one(form, "bulk_status")
     reason = _one(form, "bulk_reason")
     ownership = _one(form, "bulk_ownership") == "yes"
+    view_query = sanitize_view_query(_one(form, "view_query"))
     dispositions = session.setdefault("dispositions", _server.default_dispositions(session["result"]))
     plan = build_bulk_review_plan(
         session["result"],
@@ -154,18 +158,23 @@ def _handle_preview(handler: _server.BaseHTTPRequestHandler, form: dict[str, lis
         ownership_acknowledged=ownership,
     )
     plan_token = secrets.token_urlsafe(18)
-    # One current preview per review session. A new preview invalidates any older plan.
+    # One current preview per review session. A new preview invalidates any older plan/context.
     session["bulk_review_plans"] = {plan_token: plan}
-    handler.send_html(_preview_page(token, plan_token, session, plan))
+    session["bulk_review_return_queries"] = {plan_token: view_query}
+    handler.send_html(_preview_page(token, plan_token, session, plan, view_query))
 
 
 def _handle_apply(handler: _server.BaseHTTPRequestHandler, form: dict[str, list[str]]) -> None:
     _server.expire_sessions()
     token = _one(form, "token")
     session = _session(token)
+    plan_token = _one(form, "plan_token")
+    return_queries = session.get("bulk_review_return_queries", {})
+    view_query = return_queries.get(plan_token, sanitize_view_query(_one(form, "view_query")))
+    form["_resolved_view_query"] = [view_query]
+
     if _one(form, "confirm_bulk_apply") != "yes":
         raise _server.InputError("Bulk review apply requires explicit confirmation of the previewed one-time plan.")
-    plan_token = _one(form, "plan_token")
     plans = session.get("bulk_review_plans", {})
     plan = plans.get(plan_token)
     if not plan:
@@ -176,15 +185,17 @@ def _handle_apply(handler: _server.BaseHTTPRequestHandler, form: dict[str, list[
         pending = apply_bulk_review_plan(session["result"], dispositions, plan)
     except ValueError:
         plans.pop(plan_token, None)
+        return_queries.pop(plan_token, None)
         raise
 
     plans.pop(plan_token, None)
+    return_queries.pop(plan_token, None)
     session["dispositions"] = pending
     message = (
         f"Bulk review applied to {plan['target_count']} explicitly selected finding(s): "
         f"{plan['target_status']}."
     )
-    handler.send_html(_server.findings_page(token, session, message))
+    handler.send_html(_server.findings_page(token, session, message, filters=view_filters(view_query)))
 
 
 def install_bulk_review_ui() -> None:
@@ -216,15 +227,20 @@ def install_bulk_review_ui() -> None:
             original_do_post(self)
             return
         token = ""
+        view_query = ""
         try:
             form = _read_form(self)
             token = _one(form, "token")
+            view_query = sanitize_view_query(_one(form, "view_query"))
             if path == "/bulk-review/preview":
                 _handle_preview(self, form)
             else:
                 _handle_apply(self, form)
+                view_query = _one(form, "_resolved_view_query") or view_query
         except (_server.InputError, ValueError) as exc:
-            self.send_html(_error_page(str(exc), token), HTTPStatus.BAD_REQUEST)
+            if "form" in locals():
+                view_query = _one(form, "_resolved_view_query") or view_query
+            self.send_html(_error_page(str(exc), token, view_query), HTTPStatus.BAD_REQUEST)
 
     _server._review_row = bulk_row
     _server.page = bulk_page
