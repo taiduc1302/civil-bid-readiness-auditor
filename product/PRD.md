@@ -31,11 +31,12 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 21. Fail-closed bulk finding review plan v2: explicit selected finding IDs only, supported human statuses, suppression reason control, explicit human-ownership acknowledgement, expected current review states, full/selected finding fingerprints, and a plan content SHA-256 integrity check.
 22. Pure atomic bulk review apply-to-copy validation: revalidates plan identity/digest, safety flags, targets/count, status/reason, full and selected finding fingerprints, and exact expected current states before returning a separate dispositions mapping. Inputs remain unchanged.
 23. Explicit-selection two-step browser bulk review: individually checked findings only, no select-all or implicit filtered-view scope, target status/reason plus ownership acknowledgement, preview with exact rows and no mutation, separate confirmation, one-time plan token, immediate plan revalidation, and one atomic session dispositions assignment only after validation succeeds. Stale/replayed/replaced plans fail closed.
-24. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
-25. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
-26. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
-27. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity, accessibility, bulk-review planning/application/UI, and control-gate fixtures with regression coverage.
-28. GitHub Actions test matrix on supported Python versions.
+24. Sanitized presentation-view context preservation across review saves and bulk preview/cancel/apply/error paths. Only known findings/reference view keys are retained; token/unknown/redirect-like parameters are discarded and the server constructs local `/results` return URLs itself.
+25. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
+26. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
+27. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
+28. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity, accessibility, bulk-review planning/application/UI, view-context, and control-gate fixtures with regression coverage.
+29. GitHub Actions test matrix on supported Python versions.
 
 ## Next product milestone
 
