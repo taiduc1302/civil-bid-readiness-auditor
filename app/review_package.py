@@ -163,7 +163,7 @@ def _read_json(book: zipfile.ZipFile, name: str) -> dict[str, Any]:
 
 
 def verify_review_package(data: bytes) -> dict[str, Any]:
-    """Verify package structure and hashes entirely in memory; never restore session state."""
+    """Verify package hashes plus semantic snapshot consistency entirely in memory."""
     payload = bytes(data)
     if not payload:
         raise ValueError("Review package is blank.")
@@ -231,14 +231,20 @@ def verify_review_package(data: bytes) -> dict[str, Any]:
         if manifest.get("package_format") != PACKAGE_FORMAT or manifest.get("package_version") != PACKAGE_VERSION:
             raise ValueError("Review package manifest identity is unsupported.")
 
-        return {
-            "valid": True,
-            "package_format": PACKAGE_FORMAT,
-            "package_version": PACKAGE_VERSION,
-            "integrity_version": INTEGRITY_VERSION,
-            "members_verified": len(actual_names),
-            "reference_checks_included": "references.csv" in actual_names,
-            "session_restored": False,
-            "approval_inferred": False,
-            "heavybid_import_validated": False,
-        }
+    verified = {
+        "valid": True,
+        "package_format": PACKAGE_FORMAT,
+        "package_version": PACKAGE_VERSION,
+        "integrity_version": INTEGRITY_VERSION,
+        "members_verified": len(actual_names),
+        "reference_checks_included": "references.csv" in actual_names,
+        "session_restored": False,
+        "approval_inferred": False,
+        "heavybid_import_validated": False,
+    }
+    # Lazy import avoids a module cycle while ensuring semantic inspection can
+    # never run before structure/hash verification succeeds.
+    from package_preview import inspect_review_package_members
+
+    verified["snapshot_preview"] = inspect_review_package_members(payload, verified)
+    return verified
