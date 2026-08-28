@@ -65,7 +65,8 @@ def verification_page_body(
 <div class='notice'><strong>Integrity only.</strong> This proves only that the ZIP matches its recorded structure and member hashes. No review session was restored. It does not establish estimate correctness, estimator approval, reference authority, bid readiness, or HeavyBid import validity.</div>
 </section>"""
 
-    preview_html = snapshot_preview_body(preview) if preview else ""
+    resolved_preview = preview or (result.get("snapshot_preview") if result else None)
+    preview_html = snapshot_preview_body(resolved_preview) if resolved_preview else ""
     return f"""{alert}{verified}{preview_html}
 <section class='card'>
 <h2>Verify a review package</h2>
