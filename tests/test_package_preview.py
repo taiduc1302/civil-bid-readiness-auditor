@@ -62,7 +62,9 @@ class PackagePreviewTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;.csv", body)
         self.assertNotIn("<script>alert(1)</script>.csv", body)
         self.assertIn("does not render package <code>summary.html</code>", body)
-        self.assertNotIn("session-restore action", body.split("<form", 1)[0] if "<form" in body else "")
+        self.assertIn("never exposes a session-restore action", body)
+        self.assertNotIn("<form", body)
+        self.assertNotIn("<iframe", body)
 
     def test_rehashed_manifest_with_relaxed_safety_is_rejected_semantically(self):
         package, _ = build_review_package(self.session())
