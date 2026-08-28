@@ -1,9 +1,9 @@
-"""Read-only semantic preview for an already verifiable review-package ZIP.
+"""Read-only semantic preview for a verified review-package ZIP.
 
-The preview is deliberately not a session-restoration path. It verifies the ZIP
-first, parses only the package's known JSON/CSV evidence members in memory, checks
-cross-member consistency, and returns bounded display data. No package member is
-written to disk and no application session state is created or mutated here.
+The integrity verifier calls this module only after structure and member hashes
+pass. This module parses only known JSON/CSV evidence members, checks cross-member
+consistency, and returns bounded escaped-display data. It never writes package
+members to disk and never restores application session state.
 """
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from typing import Any
 
 from finding_review import REVIEW_STATUSES, validate_disposition
 from reference_validation import REFERENCE_STATUSES
-from review_package import verify_review_package
 
 PREVIEW_ROW_LIMIT = 100
 _FINDING_FIELDS = (
@@ -121,12 +120,17 @@ def _manifest_metadata_by_role(manifest: dict[str, Any]) -> dict[str, dict[str, 
     return by_role
 
 
-def inspect_verified_review_package(data: bytes, row_limit: int = PREVIEW_ROW_LIMIT) -> dict[str, Any]:
-    """Verify then return a bounded, read-only semantic snapshot of package contents."""
+def inspect_review_package_members(
+    data: bytes,
+    verified: dict[str, Any],
+    row_limit: int = PREVIEW_ROW_LIMIT,
+) -> dict[str, Any]:
+    """Return bounded semantic preview data after the caller verified ZIP integrity."""
     if not isinstance(row_limit, int) or isinstance(row_limit, bool) or row_limit <= 0 or row_limit > 1000:
         raise ValueError("Review package preview row limit must be an integer from 1 to 1000.")
+    if not isinstance(verified, dict) or verified.get("valid") is not True:
+        raise ValueError("Review package semantic preview requires a successful integrity result.")
 
-    verified = verify_review_package(data)
     with zipfile.ZipFile(io.BytesIO(bytes(data)), "r") as book:
         manifest = _json_object(book, "manifest.json")
         findings = _csv_rows(book, "findings.csv", _FINDING_FIELDS)
@@ -234,7 +238,6 @@ def inspect_verified_review_package(data: bytes, row_limit: int = PREVIEW_ROW_LI
 
     ordered_reviews = [review_by_id[finding_id] for finding_id in sorted(review_by_id)]
     return {
-        "verified": dict(verified),
         "source_filename": source_filename,
         "rows_reviewed": rows_reviewed,
         "sheets_reviewed": list(sheets),
