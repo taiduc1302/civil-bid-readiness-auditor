@@ -136,9 +136,8 @@ def _error_page(message: str, token: str = "") -> bytes:
     )
 
 
-def _handle_preview(handler: _server.BaseHTTPRequestHandler) -> None:
+def _handle_preview(handler: _server.BaseHTTPRequestHandler, form: dict[str, list[str]]) -> None:
     _server.expire_sessions()
-    form = _read_form(handler)
     token = _one(form, "token")
     session = _session(token)
     selected = form.get("bulk_id", [])
@@ -160,9 +159,8 @@ def _handle_preview(handler: _server.BaseHTTPRequestHandler) -> None:
     handler.send_html(_preview_page(token, plan_token, session, plan))
 
 
-def _handle_apply(handler: _server.BaseHTTPRequestHandler) -> None:
+def _handle_apply(handler: _server.BaseHTTPRequestHandler, form: dict[str, list[str]]) -> None:
     _server.expire_sessions()
-    form = _read_form(handler)
     token = _one(form, "token")
     session = _session(token)
     if _one(form, "confirm_bulk_apply") != "yes":
@@ -219,16 +217,13 @@ def install_bulk_review_ui() -> None:
             return
         token = ""
         try:
+            form = _read_form(self)
+            token = _one(form, "token")
             if path == "/bulk-review/preview":
-                _handle_preview(self)
+                _handle_preview(self, form)
             else:
-                _handle_apply(self)
+                _handle_apply(self, form)
         except (_server.InputError, ValueError) as exc:
-            # Best-effort token recovery only for the return link; never changes review state.
-            try:
-                token = token or ""
-            except Exception:
-                token = ""
             self.send_html(_error_page(str(exc), token), HTTPStatus.BAD_REQUEST)
 
     _server._review_row = bulk_row

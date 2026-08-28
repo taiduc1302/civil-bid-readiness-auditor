@@ -108,7 +108,7 @@ class BulkReviewUiTests(unittest.TestCase):
         self.assertTrue(plan_token)
         self.assertIn(b"No review state has changed", body)
         self.assertIn(b"Selected findings:</strong> 2", body)
-        self.assertIn(b"Exactly", body.replace(b"exactly", b"Exactly"))
+        self.assertIn(b"Exact findings selected", body)
         self.assertEqual(SESSIONS[token]["dispositions"], before)
         self.assertEqual(list(SESSIONS[token]["bulk_review_plans"]), [plan_token])
 
@@ -137,16 +137,19 @@ class BulkReviewUiTests(unittest.TestCase):
         status, body, _ = self.preview(token, [], ownership=True)
         self.assertEqual(status, 400)
         self.assertIn(b"at least one explicitly selected", body)
+        self.assertIn(f"/results?token={token}#findings".encode(), body)
         self.assertEqual(SESSIONS[token]["dispositions"], before)
 
         status, body, _ = self.preview(token, [1], ownership=False)
         self.assertEqual(status, 400)
         self.assertIn(b"human-ownership", body)
+        self.assertIn(f"/results?token={token}#findings".encode(), body)
         self.assertEqual(SESSIONS[token]["dispositions"], before)
 
         status, body, _ = self.preview(token, [1], status="Suppressed", reason="", ownership=True)
         self.assertEqual(status, 400)
         self.assertIn(b"Suppressed findings require a review reason", body)
+        self.assertIn(f"/results?token={token}#findings".encode(), body)
         self.assertEqual(SESSIONS[token]["dispositions"], before)
 
     def test_missing_apply_confirmation_does_not_mutate_or_consume_plan(self):
@@ -156,6 +159,7 @@ class BulkReviewUiTests(unittest.TestCase):
         status, _, body = self.apply(token, plan_token, confirm=False)
         self.assertEqual(status, 400)
         self.assertIn(b"requires explicit confirmation", body)
+        self.assertIn(f"/results?token={token}#findings".encode(), body)
         self.assertEqual(SESSIONS[token]["dispositions"], before)
         self.assertIn(plan_token, SESSIONS[token]["bulk_review_plans"])
 
