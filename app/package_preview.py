@@ -8,6 +8,7 @@ written to disk and no application session state is created or mutated here.
 from __future__ import annotations
 
 import csv
+import html
 import io
 import json
 import zipfile
@@ -94,8 +95,7 @@ def _count_dict(value: Any, allowed: tuple[str, ...], label: str) -> dict[str, i
         if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
             raise ValueError(f"Verified review package manifest {label} contains an invalid count for {key}.")
         result[key] = raw
-    unknown = [str(key) for key in value if key not in allowed]
-    if unknown:
+    if any(key not in allowed for key in value):
         raise ValueError(f"Verified review package manifest {label} contains unsupported keys.")
     return result
 
@@ -213,16 +213,12 @@ def inspect_verified_review_package(data: bytes, row_limit: int = PREVIEW_ROW_LI
         raise ValueError("Verified review package manifest reference_status_counts must be an object.")
     if any(key not in REFERENCE_STATUSES for key in manifest_reference_counts_raw):
         raise ValueError("Verified review package manifest reference_status_counts contains unsupported keys.")
-    normalized_reference_counts = {
-        key: int(manifest_reference_counts_raw.get(key, 0)) for key in REFERENCE_STATUSES
-    }
-    if any(
-        not isinstance(manifest_reference_counts_raw.get(key, 0), int)
-        or isinstance(manifest_reference_counts_raw.get(key, 0), bool)
-        or manifest_reference_counts_raw.get(key, 0) < 0
-        for key in REFERENCE_STATUSES
-    ):
-        raise ValueError("Verified review package manifest reference_status_counts contains an invalid count.")
+    normalized_reference_counts: dict[str, int] = {}
+    for key in REFERENCE_STATUSES:
+        raw = manifest_reference_counts_raw.get(key, 0)
+        if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
+            raise ValueError("Verified review package manifest reference_status_counts contains an invalid count.")
+        normalized_reference_counts[key] = raw
     if normalized_reference_counts != {key: reference_counts.get(key, 0) for key in REFERENCE_STATUSES}:
         raise ValueError("Verified review package manifest reference counts do not match references.csv.")
 
@@ -255,3 +251,84 @@ def inspect_verified_review_package(data: bytes, row_limit: int = PREVIEW_ROW_LI
         "row_limit": row_limit,
         "session_restored": False,
     }
+
+
+def _counts_text(counts: dict[str, int]) -> str:
+    return " | ".join(f"{html.escape(str(key))}: {int(value)}" for key, value in counts.items())
+
+
+def snapshot_preview_body(preview: dict[str, Any]) -> str:
+    """Render escaped, bounded package evidence; never render member HTML as active content."""
+    findings = preview.get("finding_rows", [])
+    finding_rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(str(row.get('id', '')))}</td>"
+        f"<td>{html.escape(str(row.get('severity', '')))}</td>"
+        f"<td>{html.escape(str(row.get('rule_id', '')))}</td>"
+        f"<td>{html.escape(str(row.get('sheet', '')))}</td>"
+        f"<td>{html.escape(str(row.get('row', '')))}</td>"
+        f"<td>{html.escape(str(row.get('message', '')))}</td>"
+        f"<td>{html.escape(str(row.get('review_status', '')))}</td>"
+        f"<td>{html.escape(str(row.get('review_reason', '')))}</td>"
+        "</tr>"
+        for row in findings
+    ) or "<tr><td colspan='8'>No deterministic findings in this snapshot.</td></tr>"
+    finding_note = (
+        f"<p class='visually-helpful'>Showing the first {preview['row_limit']} of {preview['finding_total']} findings. Full package CSV remains unchanged.</p>"
+        if preview.get("findings_truncated") else ""
+    )
+
+    references = preview.get("reference_rows", [])
+    reference_rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(str(row.get('status', '')))}</td>"
+        f"<td>{html.escape(str(row.get('reference_type', '')))}</td>"
+        f"<td>{html.escape(str(row.get('sheet', '')))}</td>"
+        f"<td>{html.escape(str(row.get('source_row', '')))}</td>"
+        f"<td>{html.escape(str(row.get('code', '')))}</td>"
+        f"<td>{html.escape(str(row.get('reference_code', '')))}</td>"
+        f"<td>{html.escape(str(row.get('reference_unit', '')))}</td>"
+        f"<td>{html.escape(str(row.get('message', '')))}</td>"
+        "</tr>"
+        for row in references
+    ) or "<tr><td colspan='8'>No governed reference checks in this snapshot.</td></tr>"
+    reference_note = (
+        f"<p class='visually-helpful'>Showing the first {preview['row_limit']} of {preview['reference_total']} reference checks. Full package CSV remains unchanged.</p>"
+        if preview.get("references_truncated") else ""
+    )
+
+    metadata_rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(str(item.get('role', '')))}</td>"
+        f"<td>{html.escape(str(item.get('filename', '')))}</td>"
+        f"<td>{html.escape(str(item.get('revision', '')))}</td>"
+        f"<td>{html.escape(str(item.get('size_bytes', '')))}</td>"
+        f"<td><code>{html.escape(str(item.get('sha256', '')))}</code></td>"
+        f"<td>{html.escape(str(item.get('authority_status', '')))}</td>"
+        "</tr>"
+        for item in preview.get("reference_metadata", [])
+    ) or "<tr><td colspan='6'>No reference evidence metadata in this snapshot.</td></tr>"
+
+    sheets = ", ".join(html.escape(str(item)) for item in preview.get("sheets_reviewed", [])) or "(none recorded)"
+    return f"""
+<section class='card' id='package-snapshot-preview'>
+<h2>Read-only review snapshot preview</h2>
+<div class='notice'><strong>Preview only.</strong> These verified package records are displayed as escaped text. No findings, dispositions, mappings, references, approvals, or source files were restored into an active review session.</div>
+<p><strong>Source filename:</strong> {html.escape(str(preview.get('source_filename', '')))}<br>
+<strong>Rows reviewed:</strong> {html.escape(str(preview.get('rows_reviewed', '')))}<br>
+<strong>Sheets reviewed:</strong> {sheets}<br>
+<strong>Findings:</strong> {preview.get('finding_total', 0)}<br>
+<strong>Reference checks:</strong> {preview.get('reference_total', 0)}</p>
+<p><strong>Review states:</strong> {_counts_text(preview.get('review_status_counts', {}))}</p>
+<p><strong>Reference statuses:</strong> {_counts_text(preview.get('reference_status_counts', {}))}</p>
+<h3>Finding review snapshot</h3>
+<div style='overflow:auto'><table><caption>Verified review-package findings and human review states</caption><thead><tr><th>ID</th><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Finding</th><th>Review status</th><th>Reason</th></tr></thead><tbody>{finding_rows}</tbody></table></div>
+{finding_note}
+<h3>Governed reference checks</h3>
+<div style='overflow:auto'><table><caption>Verified review-package reference checks</caption><thead><tr><th>Status</th><th>Type</th><th>Sheet</th><th>Row</th><th>Source code</th><th>Reference code</th><th>Reference unit</th><th>Message</th></tr></thead><tbody>{reference_rows}</tbody></table></div>
+{reference_note}
+<h3>Reference evidence metadata</h3>
+<div style='overflow:auto'><table><caption>Recorded reference evidence metadata; authority is not inferred</caption><thead><tr><th>Role</th><th>Filename</th><th>Revision / label</th><th>Bytes</th><th>SHA-256</th><th>Authority status</th></tr></thead><tbody>{metadata_rows}</tbody></table></div>
+<p class='visually-helpful'>The preview intentionally does not render package <code>summary.html</code> or <code>README.txt</code> as active content and never exposes a session-restore action.</p>
+</section>
+"""
