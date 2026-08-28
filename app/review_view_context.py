@@ -67,7 +67,7 @@ def results_return_url(token: str, raw: str = "", anchor: str = "findings") -> s
 def _view_context_markup() -> str:
     return """
 <input type='hidden' name='view_query' id='review-view-query' value=''>
-<script>(function(){var e=document.getElementById('review-view-query');if(e){e.value=window.location.search.replace(/^\?/, '');}})();</script>
+<script>(function(){var e=document.getElementById('review-view-query');if(e){var q=window.location.search;e.value=q.charAt(0)==='?'?q.slice(1):q;}})();</script>
 """
 
 
@@ -85,8 +85,16 @@ def _inject_view_context(body: str) -> str:
     return body[: token_end + 1] + _view_context_markup() + body[token_end + 1 :]
 
 
-def _handle_review(handler: _server.BaseHTTPRequestHandler) -> None:
-    form = handler._form()
+def _review_error_page(message: str, token: str = "", raw_view: str = "") -> bytes:
+    back = results_return_url(token, raw_view) if token else "/"
+    return _server.page(
+        "Review states not saved",
+        f"<div class='error'>{html.escape(message)}</div>"
+        f"<p><a href='{html.escape(back, quote=True)}'>Return to review</a></p>",
+    )
+
+
+def _handle_review(handler: _server.BaseHTTPRequestHandler, form: dict[str, list[str]]) -> None:
     token = form.get("token", [""])[0]
     session = _server.SESSIONS.get(token)
     if not session or "result" not in session:
@@ -132,11 +140,16 @@ def install_review_view_context() -> None:
         if self.path.split("?", 1)[0] != "/review":
             original_do_post(self)
             return
+        token = ""
+        raw_view = ""
         try:
             _server.expire_sessions()
-            _handle_review(self)
+            form = self._form()
+            token = form.get("token", [""])[0]
+            raw_view = form.get("view_query", [""])[0]
+            _handle_review(self, form)
         except (_server.InputError, ValueError) as exc:
-            self.send_html(_server.home(str(exc)), HTTPStatus.BAD_REQUEST)
+            self.send_html(_review_error_page(str(exc), token, raw_view), HTTPStatus.BAD_REQUEST)
 
     _server.page = contextual_page
     _server.Handler.do_POST = contextual_do_post
