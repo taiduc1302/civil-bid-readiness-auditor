@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 from accessibility import install_accessibility_semantics
+from archived_review_ui import install_archived_review_ui
 from bulk_review_ui import install_bulk_review_ui
 from review_view_context import install_review_view_context
 
 install_accessibility_semantics()
 install_bulk_review_ui()
 install_review_view_context()
+install_archived_review_ui()
 
 
 def guide_body() -> str:
@@ -49,7 +51,13 @@ def guide_body() -> str:
 <section class='card'>
 <h2>7. Export and verify a review snapshot</h2>
 <p>Download the review package ZIP after reviewing findings and optional references. It contains review/report files plus <code>integrity.json</code>; original estimate/reference bytes are intentionally excluded.</p>
-<p>Return to the home page and use <strong>Verify review package ZIP</strong> to check recorded member structure and hashes without restoring a review session.</p>
+<p>Return to the home page and use <strong>Verify review package ZIP</strong> to check recorded member structure, hashes, and the bounded read-only semantic snapshot without restoring a review session.</p>
+</section>
+<section class='card'>
+<h2>8. Continue archived human review without pretending to re-audit</h2>
+<p>After a package verifies, the separate <strong>Archived review continuation</strong> flow can recreate only the archived findings, human dispositions, and recorded reference evidence in a temporary review session. You must select the ZIP again and acknowledge that the original estimate/reference bytes are absent.</p>
+<p>Archived continuation can use review filters, single-row/bulk dispositions, and review exports. It cannot remap source columns, rerun deterministic audit rules, or replace/rerun governed references. A re-exported package records snapshot-derived provenance.</p>
+<p><a class='button' href='/continue-review-package'>Open archived review continuation</a></p>
 </section>
 <section class='card'>
 <h2>Safety state</h2>
