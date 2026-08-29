@@ -23,6 +23,7 @@ This is a reviewable prototype, not production-ready estimating software and not
 11. Export individual CSV/HTML reports or download one deterministic ZIP review package containing the manifest, findings, review states, summary, all reference checks when present, and `integrity.json`. Original estimate/reference bytes are intentionally excluded.
 12. `integrity.json` records SHA-256 and byte size for every other package member. The in-memory verifier rejects changed/missing/duplicate/unexpected/unsafe members and unsupported package identity, then checks that the package's manifest, finding/review CSVs, review states, counts, safety flags, and optional reference evidence are internally consistent.
 13. From the home page, **Verify review package ZIP** can validate and inspect a previously exported package in the browser. After integrity and semantic checks pass, the page shows a bounded read-only snapshot of review states, finding evidence, reference checks, and reference metadata. Uploaded text is escaped, packaged `summary.html`/`README.txt` are not rendered as active content, and at most 100 finding rows plus 100 reference rows are displayed while full counts remain visible. Verification/preview never creates or restores a review session and does not establish approval, authority, readiness, or HeavyBid import validity.
+14. A separate **Archived review continuation** flow can resume human disposition work from a verified review-package snapshot after explicit acknowledgement. It recreates only archived findings, dispositions, and recorded reference evidence; it does not retain the package bytes, restore the original estimate/reference files, remap columns, rerun deterministic audit rules, or rerun governed references. Re-exported continuation packages record their source package SHA-256 and explicit `archived_review_snapshot` provenance. The current editable continuation limit is 1000 findings/reference checks; larger packages remain available for read-only verification/preview.
 
 ## Run locally
 
@@ -47,4 +48,4 @@ All bundled examples, structured demo inputs, and reference fixtures are fiction
 
 ## Public snapshot boundary
 
-This repository intentionally excludes local automation logs, project-control state, release archives, runtime records, company codebooks, and personal/local path data. See `CLAIMS_LEDGER.md`, `NOTICE`, and `product/post_consolidation_roadmap.md`.
+This repository intentionally excludes local automation logs, project-control state, release archives, runtime records, company codebooks, and personal/local path data. See `CLAIMS_LEDGER.md`, `NOTICE`, `product/archived_review_contract.md`, and `product/post_consolidation_roadmap.md`.
