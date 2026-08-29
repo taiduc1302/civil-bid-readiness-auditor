@@ -166,7 +166,7 @@ class ArchivedReviewUiTests(unittest.TestCase):
         self.assertEqual(SESSIONS[token]["result"], before_result)
 
     def test_reexported_package_records_snapshot_derived_provenance_and_can_be_reopened(self):
-        token, _, source_package, source_name = self.open_archived_review()
+        token, _, _, source_name = self.open_archived_review()
         status, headers, package = self.request("GET", f"/export/package?token={token}")
         self.assertEqual(status, 200)
         self.assertIn("application/zip", headers["Content-Type"])
@@ -184,8 +184,8 @@ class ArchivedReviewUiTests(unittest.TestCase):
 
         reopened = build_archived_review_session("second-generation.zip", package)
         self.assertEqual(reopened["archived_snapshot_origin"]["source_session_mode"], ARCHIVED_REVIEW_SESSION_MODE)
-        self.assertEqual(len(source_package), len(source_package))  # source bytes are not stored in reopened session
         self.assertNotIn("package_bytes", reopened)
+        self.assertNotIn("audit_sheets", reopened)
 
 
 if __name__ == "__main__":
