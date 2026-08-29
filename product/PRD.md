@@ -23,27 +23,28 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 13. Deterministic review-package integrity metadata plus an in-memory verifier for member names, allowed structure, byte sizes, SHA-256 values, and supported package identity.
 14. Semantic package validation after integrity succeeds: required safety state, finding/review evidence agreement, supported review states, manifest count consistency, and optional reference status/type/metadata consistency must pass even when package hashes were internally recomputed.
 15. A local read-only review-package verification/preview screen that accepts one ZIP, performs integrity + semantic checks in memory, and displays a bounded escaped snapshot of review/finding/reference evidence without rendering packaged HTML/README as active content. At most 100 finding rows and 100 reference rows are shown; no review session is created/restored.
-16. Exact Activity/Resource code + unit validation against explicitly supplied governed reference snapshots.
-17. Governed reference evidence metadata: role, filename, user-supplied revision/label, byte size, SHA-256, and explicit `NOT_ESTABLISHED_BY_APP` authority state.
-18. Presentation-only governed reference result views: Exceptions by default, status/type filters, metadata-aware search, deterministic sort by status/source/code/type, optional grouping by status/type, compact status composition in reference-type group headings, and composed `/results` state with findings views.
-19. Optional evidence-only Crew Code / Production Rate comparison when values are explicit on both source and approved reference.
-20. Local fictional onboarding walkthrough covering mapping, review views, dispositions, governed reference evidence, and review-package export using bundled training data only.
-21. Fixed one-click fictional structured demo kit: exactly one bundled HeavyBid-style synthetic estimate plus fixed Activity/Resource reference-download routes; references remain manual and are never auto-applied.
-22. Fail-closed bulk finding review plan v2: explicit selected finding IDs only, supported human statuses, suppression reason control, explicit human-ownership acknowledgement, expected current review states, full/selected finding fingerprints, and a plan content SHA-256 integrity check.
-23. Pure atomic bulk review apply-to-copy validation: revalidates plan identity/digest, safety flags, targets/count, status/reason, full and selected finding fingerprints, and exact expected current states before returning a separate dispositions mapping. Inputs remain unchanged.
-24. Explicit-selection two-step browser bulk review: individually checked findings only, no select-all or implicit filtered-view scope, target status/reason plus ownership acknowledgement, preview with exact rows and no mutation, separate confirmation, one-time plan token, immediate plan revalidation, and one atomic session dispositions assignment only after validation succeeds. Stale/replayed/replaced plans fail closed.
-25. Sanitized presentation-view context preservation across review saves and bulk preview/cancel/apply/error paths. Only known findings/reference view keys are retained; token/unknown/redirect-like parameters are discarded and the server constructs local `/results` return URLs itself.
-26. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
-27. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
-28. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
-29. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity/semantic-preview, accessibility, bulk-review planning/application/UI, view-context, and control-gate fixtures with regression coverage.
-30. GitHub Actions test matrix on supported Python versions.
+16. Explicit archived review continuation: after separate upload, acknowledgement, and re-verification, a review-package can create a temporary `archived_review_snapshot` session containing only archived findings, human dispositions, and recorded reference evidence. Original estimate/reference/package bytes are not retained; remapping, deterministic re-audit, and reference rerun source state are unavailable. Re-exported continuation packages carry source package SHA-256 and no-re-audit/no-source-bytes provenance. Current editable continuation is capped at 1000 findings/reference checks; larger packages remain read-only-verifiable.
+17. Exact Activity/Resource code + unit validation against explicitly supplied governed reference snapshots.
+18. Governed reference evidence metadata: role, filename, user-supplied revision/label, byte size, SHA-256, and explicit `NOT_ESTABLISHED_BY_APP` authority state.
+19. Presentation-only governed reference result views: Exceptions by default, status/type filters, metadata-aware search, deterministic sort by status/source/code/type, optional grouping by status/type, compact status composition in reference-type group headings, and composed `/results` state with findings views.
+20. Optional evidence-only Crew Code / Production Rate comparison when values are explicit on both source and approved reference.
+21. Local fictional onboarding walkthrough covering mapping, review views, dispositions, governed reference evidence, review-package export, verification, and archived review continuation using bundled training data only.
+22. Fixed one-click fictional structured demo kit: exactly one bundled HeavyBid-style synthetic estimate plus fixed Activity/Resource reference-download routes; references remain manual and are never auto-applied.
+23. Fail-closed bulk finding review plan v2: explicit selected finding IDs only, supported human statuses, suppression reason control, explicit human-ownership acknowledgement, expected current review states, full/selected finding fingerprints, and a plan content SHA-256 integrity check.
+24. Pure atomic bulk review apply-to-copy validation: revalidates plan identity/digest, safety flags, targets/count, status/reason, full and selected finding fingerprints, and exact expected current states before returning a separate dispositions mapping. Inputs remain unchanged.
+25. Explicit-selection two-step browser bulk review: individually checked findings only, no select-all or implicit filtered-view scope, target status/reason plus ownership acknowledgement, preview with exact rows and no mutation, separate confirmation, one-time plan token, immediate plan revalidation, and one atomic session dispositions assignment only after validation succeeds. Stale/replayed/replaced plans fail closed.
+26. Sanitized presentation-view context preservation across review saves and bulk preview/cancel/apply/error paths. Only known findings/reference view keys are retained; token/unknown/redirect-like parameters are discarded and the server constructs local `/results` return URLs itself.
+27. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
+28. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
+29. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
+30. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity/semantic-preview, archived-review continuation, accessibility, bulk-review planning/application/UI, view-context, and control-gate fixtures with regression coverage.
+31. GitHub Actions test matrix on supported Python versions.
 
 ## Next product milestone
 
 ### P1 — review UX hardening
 
-- define any future review-package **session restoration/re-open** workflow only after an explicit version/migration/ownership contract; integrity verification, semantic validation, and read-only package preview are built, restoration is not;
+- archived human-review continuation is built; any future **true estimate/source restoration or re-audit** requires a separate package/version/migration/ownership contract that supplies and verifies the original source bytes rather than treating archived review evidence as current input;
 - evaluate additional fictional first-run guidance only when it demonstrates already-built behavior rather than implying reference authority or automatic decisions;
 - keep bulk actions limited to explicit selections and preserve one-time preview/revalidation semantics; do not add select-all or implicit view-based scope.
 
@@ -69,7 +70,7 @@ The writer must:
 
 ## Deferred / not built
 
-Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, review-package session restoration/re-open, direct HeavyBid database/API access, and production import automation.
+Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, true source-file/session restoration or deterministic re-audit from a review package, direct HeavyBid database/API access, and production import automation.
 
 ## Non-goals and safeguards
 
