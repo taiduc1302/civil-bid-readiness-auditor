@@ -121,9 +121,32 @@ Choose **Download review package ZIP**. The deterministic review snapshot can co
 
 The original estimate/reference file bytes are intentionally excluded.
 
-Return to the home page and choose **Verify review package ZIP** to check the recorded member structure and SHA-256 values in memory. Verification does not restore the review session.
+Return to the home page and choose **Verify review package ZIP** to check recorded member structure, SHA-256 values, and semantic snapshot consistency in memory. The verifier can display a bounded read-only snapshot but still creates no review session.
 
-Learning goal: the ZIP is a portable review snapshot, not a saved project database, bid approval, or HeavyBid artifact.
+Learning goal: verification proves recorded package integrity/consistency, not current source-file truth.
+
+## 10. Continue archived human review without re-auditing
+
+After verification, open **Archived review continuation**. Select the same ZIP again and acknowledge that this is continuation of archived review evidence only.
+
+The continuation session recreates:
+
+- archived deterministic finding evidence;
+- the human disposition state stored in `review.csv`;
+- archived governed reference checks and reference metadata when present.
+
+It does **not** recreate:
+
+- original estimate bytes;
+- original reference bytes;
+- parsed estimate rows for remapping;
+- an `audit_sheets` source for deterministic re-audit/reference rerun.
+
+You can continue filters, single-row review, explicit bulk review, and review/package exports. Archived reference evidence is read-only. A new package exported from this continuation records the prior package filename/SHA-256 and `session_context.mode=archived_review_snapshot` so it cannot look like a fresh audit.
+
+Current editable continuation supports at most 1000 findings/reference checks; larger packages remain available for read-only verification/preview.
+
+Learning goal: continuing human review of archived evidence is materially different from rerunning an audit against the original estimate.
 
 ## Safety state to remember
 
