@@ -4,12 +4,14 @@ from __future__ import annotations
 from accessibility import install_accessibility_semantics
 from archived_review_ui import install_archived_review_ui
 from bulk_review_ui import install_bulk_review_ui
+from review_delta_ui import install_review_delta_ui
 from review_view_context import install_review_view_context
 
 install_accessibility_semantics()
 install_bulk_review_ui()
 install_review_view_context()
 install_archived_review_ui()
+install_review_delta_ui()
 
 
 def guide_body() -> str:
@@ -58,6 +60,12 @@ def guide_body() -> str:
 <p>After a package verifies, the separate <strong>Archived review continuation</strong> flow can recreate only the archived findings, human dispositions, and recorded reference evidence in a temporary review session. You must select the ZIP again and acknowledge that the original estimate/reference bytes are absent.</p>
 <p>Archived continuation can use review filters, single-row/bulk dispositions, and review exports. It cannot remap source columns, rerun deterministic audit rules, or replace/rerun governed references. A re-exported package records snapshot-derived provenance.</p>
 <p><a class='button' href='/continue-review-package'>Open archived review continuation</a></p>
+</section>
+<section class='card'>
+<h2>9. Compare two review cycles with Review Delta</h2>
+<p>Use two exported review-package ZIPs as Earlier and Later snapshots. Review Delta re-verifies both packages, then distinguishes deterministic finding-evidence drift from human review-state changes and separately compares governed reference checks and reference metadata.</p>
+<p>The comparison is descriptive only. Added/removed findings or changed statuses do not mean an estimate improved or worsened, and no audit rules are rerun.</p>
+<p><a class='button' href='/compare-review-packages'>Open Review Delta</a></p>
 </section>
 <section class='card'>
 <h2>Safety state</h2>
