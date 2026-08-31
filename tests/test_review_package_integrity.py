@@ -32,11 +32,20 @@ class ReviewPackageIntegrityTests(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(data)) as book:
             return {name: book.read(name) for name in book.namelist()}
 
-    def make_zip(self, members: dict[str, bytes], duplicate: tuple[str, bytes] | None = None) -> bytes:
+    def make_zip(
+        self,
+        members: dict[str, bytes],
+        duplicate: tuple[str, bytes] | None = None,
+        directory: str | None = None,
+    ) -> bytes:
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as book:
             for name, payload in members.items():
                 book.writestr(name, payload)
+            if directory:
+                info = zipfile.ZipInfo(directory.rstrip("/") + "/")
+                info.external_attr = (0o40755 << 16) | 0x10
+                book.writestr(info, b"")
             if duplicate:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", UserWarning)
@@ -69,6 +78,11 @@ class ReviewPackageIntegrityTests(unittest.TestCase):
         members["../outside.txt"] = b"unsafe"
         with self.assertRaisesRegex(ValueError, "unsafe member path"):
             verify_review_package(self.make_zip(members))
+
+    def test_directory_entries_fail_closed_even_when_other_members_are_valid(self):
+        members = self.members(self.package())
+        with self.assertRaisesRegex(ValueError, "unsupported directory entries"):
+            verify_review_package(self.make_zip(members, directory="ignored-folder"))
 
     def test_duplicate_member_names_fail_closed(self):
         members = self.members(self.package())
