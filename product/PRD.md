@@ -27,7 +27,7 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 17. Exact Activity/Resource code + unit validation against explicitly supplied governed reference snapshots.
 18. Governed reference evidence metadata: role, filename, user-supplied revision/label, byte size, SHA-256, and explicit `NOT_ESTABLISHED_BY_APP` authority state.
 19. Presentation-only governed reference result views: Exceptions by default, status/type filters, metadata-aware search, deterministic sort by status/source/code/type, optional grouping by status/type, compact status composition in reference-type group headings, and composed `/results` state with findings views.
-20. Optional evidence-only Crew Code / Production Rate comparison when values are explicit on both source and approved reference.
+20. A tested library-level evidence-only Crew Code / Production Rate comparison when values are explicit on both source and approved reference. This comparison is not yet exposed through the normal browser reference workflow and does not run automatically.
 21. Local fictional onboarding walkthrough covering mapping, review views, dispositions, governed reference evidence, review-package export, verification, archived review continuation, and Review Delta using bundled training data only.
 22. Fixed one-click fictional structured demo kit: exactly one bundled HeavyBid-style synthetic estimate plus fixed Activity/Resource reference-download routes; references remain manual and are never auto-applied.
 23. Fail-closed bulk finding review plan v2: explicit selected finding IDs only, supported human statuses, suppression reason control, explicit human-ownership acknowledgement, expected current review states, full/selected finding fingerprints, and a plan content SHA-256 integrity check.
@@ -43,16 +43,19 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 
 ## Next product milestone
 
-### P1 — review UX hardening
+### P1 — reliability and review UX hardening
 
+- harden temporary in-memory session mutation semantics for the threaded runtime, including one-time bulk-plan consumption and concurrent review/reference updates, and define/test active-review expiry as a deliberate idle-lifetime policy rather than accidental absolute session age (issue #67);
+- replace import-order/user-visible-page-title coupling in the compatibility-wrapper runtime with explicit deterministic feature composition, while preserving current routes and safety boundaries (issue #68);
 - archived human-review continuation is built; any future **true estimate/source restoration or re-audit** requires a separate package/version/migration/ownership contract that supplies and verifies the original source bytes rather than treating archived review evidence as current input;
 - extend Review Delta only with presentation/export conveniences that preserve its neutral evidence-drift boundary; do not convert it into an automatic quality trend score;
+- keep public docs/release evidence aligned with the implemented tree, including an explicit decision on whether the current stale allowlist is a historical snapshot or a regenerated release-integrity manifest (issue #70);
 - evaluate additional fictional first-run guidance only when it demonstrates already-built behavior rather than implying reference authority or automatic decisions;
 - keep bulk actions limited to explicit selections and preserve one-time preview/revalidation semantics; do not add select-all or implicit view-based scope.
 
 ### P2 — governed estimating references
 
-- expose operational Crew Code / Production Rate evidence in the local UI only when explicit governed references are supplied;
+- expose operational Crew Code / Production Rate evidence in the local UI only when explicit governed references are supplied (issue #69);
 - retain historical cost/rate fields as non-authoritative unless explicitly designated by estimator/project controls;
 - evaluate explicit reference-review dispositions separately from deterministic code/unit matching.
 
@@ -69,6 +72,8 @@ The writer must:
 - hash the created candidate and record a post-write manifest;
 - preserve `NOT_PRODUCTION_READY`, `NOT_ESTIMATOR_VALIDATED`, and `HEAVYBID_IMPORT_VALIDATED=false`;
 - require an independent real HeavyBid test import before import-validation status can change.
+
+The controlled writer/test-import boundary remains tracked in issue #14. A generic XLSX writer must not be described as HeavyBid-compatible.
 
 ## Deferred / not built
 
