@@ -28,7 +28,12 @@ class PublicSnapshotProvenanceTests(unittest.TestCase):
             self.assertRegex(item["sha256"], re.compile(r"^[0-9a-f]{64}$"))
 
     def test_provenance_docs_explicitly_reject_current_tree_interpretation(self):
-        text = (ROOT / "provenance" / "README.md").read_text(encoding="utf-8").casefold()
+        text = (
+            (ROOT / "provenance" / "README.md")
+            .read_text(encoding="utf-8")
+            .casefold()
+            .replace("**", "")
+        )
         self.assertIn("not a current-tree integrity manifest", text)
         self.assertIn("2026-08-19", text)
         self.assertIn("no generated current-release source-tree allowlist manifest", text)
