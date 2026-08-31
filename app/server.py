@@ -1,10 +1,9 @@
 """Public server entrypoint with Civil Estimate Review Auditor review UX.
 
-The tested runtime remains in ``server_legacy``. This wrapper adds the public
-product title, presentation-only finding/reference review views, review
-attention guidance, explicit in-memory review-package export and verification,
-governed reference evidence metadata, and a fixed fictional onboarding/demo
-kit without changing deterministic audit/reference semantics.
+The tested runtime remains in ``server_legacy``. Public feature installers are
+assembled explicitly by ``runtime_composition``; onboarding/content imports do
+not decide runtime behavior. Review-only renderer augmentation uses stable
+internal page identity rather than user-visible page titles.
 """
 from __future__ import annotations
 
@@ -16,6 +15,13 @@ import server_legacy as _server
 from server_legacy import *  # noqa: F401,F403 - compatibility re-export
 from archived_review import ARCHIVED_REVIEW_SESSION_MODE, archived_session_context
 from demo_kit import reference_fixture, structured_estimate
+from runtime_composition import compose_public_runtime
+from runtime_context import PAGE_KIND_REVIEW_FINDINGS, page_context
+
+# One explicit startup/composition boundary replaces onboarding import side
+# effects. Installers remain idempotent so tests/import reloads stay safe.
+compose_public_runtime()
+
 from onboarding import guide_body
 from package_verification import read_package_upload, verification_page_body
 from reference_metadata import reference_review_csv
@@ -62,6 +68,12 @@ def guide_page() -> bytes:
 
 def package_verification_page(result: dict | None = None, filename: str = "", error: str = "") -> bytes:
     return _server.page("Review package verification", verification_page_body(result, filename, error))
+
+
+def _render_review_page(title: str, body: str) -> bytes:
+    """Render one findings/review page under stable internal page identity."""
+    with page_context(PAGE_KIND_REVIEW_FINDINGS):
+        return _server.page(title, body)
 
 
 _server.home = home
@@ -257,7 +269,8 @@ def findings_page(token: str, session: dict, message: str = "", filters: dict[st
         1,
     ).replace("<h2>Governed reference validation</h2>", "<h2 id='references-heading'>Governed reference validation</h2>", 1)
     navigation = "<nav class='skip-links' aria-label='Review page navigation'><a href='#attention'>Skip to attention summary</a><a href='#filters'>Skip to filters</a><a href='#findings'>Skip to findings</a><a href='#references'>Skip to references</a></nav>"
-    return _server.page(page_title, f"""{_ACCESSIBILITY_STYLE}{navigation}{alert}{archived_panel}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/package?token={token}'>Download review package ZIP</a> <a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>{html.escape(start_audit_label)}</a></p></section>{attention_html}{controls}<section class='card' id='findings' tabindex='-1' aria-labelledby='findings-heading'><h2 id='findings-heading'>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table aria-describedby='findings-caption'><caption id='findings-caption'>Visible deterministic findings and human review controls</caption><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save visible review states</button> <a href='#filters'>Back to filters</a></p></form></section>{reference_html}""")
+    body = f"""{_ACCESSIBILITY_STYLE}{navigation}{alert}{archived_panel}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/package?token={token}'>Download review package ZIP</a> <a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>{html.escape(start_audit_label)}</a></p></section>{attention_html}{controls}<section class='card' id='findings' tabindex='-1' aria-labelledby='findings-heading'><h2 id='findings-heading'>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table aria-describedby='findings-caption'><caption id='findings-caption'>Visible deterministic findings and human review controls</caption><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save visible review states</button> <a href='#filters'>Back to filters</a></p></form></section>{reference_html}"""
+    return _render_review_page(page_title, body)
 
 
 _server.findings_page = findings_page
