@@ -24,12 +24,16 @@ def _semantic_body(body: str) -> str:
 
 
 def install_accessibility_semantics() -> None:
-    """Install one idempotent wrapper around the shared legacy page renderer."""
-    current = _server.page
-    if getattr(current, "_accessibility_semantics_installed", False):
+    """Install one idempotent wrapper around the shared page renderer.
+
+    Idempotence is recorded on the shared runtime rather than the current page
+    function object because other public features intentionally wrap ``page``
+    after accessibility is installed.
+    """
+    if getattr(_server, "_accessibility_semantics_installed", False):
         return
 
-    original = current
+    original = _server.page
     if _SKIP_STYLE not in _server.STYLE:
         _server.STYLE += _SKIP_STYLE
 
@@ -44,5 +48,5 @@ def install_accessibility_semantics() -> None:
         )
         return rendered.encode("utf-8")
 
-    accessible_page._accessibility_semantics_installed = True  # type: ignore[attr-defined]
     _server.page = accessible_page
+    _server._accessibility_semantics_installed = True
