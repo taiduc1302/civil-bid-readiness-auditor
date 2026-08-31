@@ -40,6 +40,7 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 30. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity/semantic-preview, archived-review continuation, accessibility, bulk-review planning/application/UI, view-context, and control-gate fixtures with regression coverage.
 31. GitHub Actions test matrix on supported Python versions.
 32. Review Delta / Change Intelligence: an in-memory comparison of two independently verified review-package snapshots. Findings align by unique sheet/row/rule/field anchors so deterministic evidence changes are separated from human status/reason changes; governed reference checks and role-linked reference metadata are compared independently. Ambiguous duplicate anchors fail closed, no review session is created, no audit/reference logic is rerun, and no improvement/correctness/readiness judgement is inferred.
+33. Temporary-session concurrency hardening for the local `ThreadingHTTPServer`: one in-memory lock per session token serializes state-sensitive read/validate/write operations while different tokens remain independently concurrent. Active lookup refreshes a 30-minute idle timeout, expiry skips a session while an active request holds its lock, and one-time bulk plans cannot be applied twice by concurrent requests.
 
 ## Next product milestone
 
