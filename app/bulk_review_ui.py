@@ -217,7 +217,7 @@ def install_bulk_review_ui() -> None:
         return rendered.replace("</tr>", cell + "</tr>", 1)
 
     def bulk_page(title: str, body: str) -> bytes:
-        if title == "Audit results":
+        if title in ("Audit results", "Archived review snapshot"):
             body = _inject_bulk_controls(body)
         return original_page(title, body)
 
