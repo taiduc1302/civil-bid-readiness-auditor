@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import server_legacy as _server
 from server_legacy import *  # noqa: F401,F403 - compatibility re-export
+from archived_review import ARCHIVED_REVIEW_SESSION_MODE, archived_session_context
 from demo_kit import reference_fixture, structured_estimate
 from onboarding import guide_body
 from package_verification import read_package_upload, verification_page_body
@@ -89,6 +90,27 @@ def _result_url(token: str, current: dict[str, str] | None = None, **overrides: 
         else:
             query.pop(key, None)
     return "/results?" + urlencode(query)
+
+
+def _archived_review_panel(session: dict) -> tuple[str, str, str]:
+    if session.get("session_mode") != ARCHIVED_REVIEW_SESSION_MODE:
+        return "", "Audit results", "Start another audit"
+    context = archived_session_context(session)
+    if context is None:
+        return "", "Archived review snapshot", "Start a new source-backed audit"
+    package_name = html.escape(str(context.get("source_package_filename", "") or "review-package.zip"))
+    package_sha = html.escape(str(context.get("source_package_sha256", "") or ""))
+    source_mode = html.escape(str(context.get("source_package_session_mode", "") or "legacy_package_v1_unspecified"))
+    panel = f"""
+<section class='card' id='archived-provenance' aria-labelledby='archived-provenance-heading'>
+<h2 id='archived-provenance-heading'>Archived review snapshot — continuation only</h2>
+<div class='notice'><strong>This is not a restored or re-audited estimate.</strong> The temporary session contains archived findings, human dispositions, and recorded reference evidence only. Original estimate/reference bytes are absent.</div>
+<p><strong>Source package:</strong> {package_name}<br><strong>Source package SHA-256:</strong> <code>{package_sha}</code><br><strong>Source package session mode:</strong> <code>{source_mode}</code></p>
+<p><strong>Editable scope:</strong> human finding dispositions and notes only. Filters, sorting, grouping, and snapshot re-export remain available.</p>
+<p><strong>Unavailable from this snapshot:</strong> column remapping, deterministic estimate re-audit, governed-reference rerun/replacement, editable audit restoration, or proof that current project files still match the archived source.</p>
+<p>A true re-audit requires the original estimate bytes to be uploaded again through the normal audit flow, with any required governed reference bytes supplied again. That creates a new source-backed audit rather than restoring this archived session.</p>
+</section>"""
+    return panel, "Archived review snapshot", "Start a new source-backed audit"
 
 
 def _filter_controls(token: str, result: dict, filters: dict[str, str], visible: int) -> str:
@@ -224,6 +246,7 @@ def findings_page(token: str, session: dict, message: str = "", filters: dict[st
     attention_html = _attention_panel(token, attention, filters)
     rows = _render_review_rows(grouped_findings, dispositions)
     alert = f"<div class='notice'>{html.escape(message)}</div>" if message else ""
+    archived_panel, page_title, start_audit_label = _archived_review_panel(session)
     review_summary = " | ".join(f"{html.escape(status)}: {disposition_counts[status]}" for status in REVIEW_STATUSES)
     controls = _filter_controls(token, result, filters, len(visible_findings))
     finding_view = {key: filters[key] for key in _FINDING_VIEW_KEYS}
@@ -234,7 +257,7 @@ def findings_page(token: str, session: dict, message: str = "", filters: dict[st
         1,
     ).replace("<h2>Governed reference validation</h2>", "<h2 id='references-heading'>Governed reference validation</h2>", 1)
     navigation = "<nav class='skip-links' aria-label='Review page navigation'><a href='#attention'>Skip to attention summary</a><a href='#filters'>Skip to filters</a><a href='#findings'>Skip to findings</a><a href='#references'>Skip to references</a></nav>"
-    return _server.page("Audit results", f"""{_ACCESSIBILITY_STYLE}{navigation}{alert}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/package?token={token}'>Download review package ZIP</a> <a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>Start another audit</a></p></section>{attention_html}{controls}<section class='card' id='findings' tabindex='-1' aria-labelledby='findings-heading'><h2 id='findings-heading'>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table aria-describedby='findings-caption'><caption id='findings-caption'>Visible deterministic findings and human review controls</caption><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save visible review states</button> <a href='#filters'>Back to filters</a></p></form></section>{reference_html}""")
+    return _server.page(page_title, f"""{_ACCESSIBILITY_STYLE}{navigation}{alert}{archived_panel}<div class='notice'><strong>{html.escape(metrics['status'])}.</strong> Deterministic review prompts only; this is not a bid certification.</div><section class='card'><div class='metrics'><div class='metric'><strong>{metrics['affected_rows']} / {result['rows_reviewed']}</strong><br>Affected rows ({metrics['affected_row_percent']}%)</div><div class='metric'><strong>{metrics['priority_rows']}</strong><br>Critical/high-priority rows</div><div class='metric'><strong>{metrics['finding_count']}</strong><br>Total findings</div><div class='metric'><strong>{result['score']}/100</strong><br>Legacy score</div></div><p><strong>Rows reviewed:</strong> {result['rows_reviewed']} &nbsp; <strong>Review-status score:</strong> {result['score']}/100 (legacy) &nbsp; <strong>Sheets:</strong> {html.escape(', '.join(result['sheets_reviewed']))}</p><p>Critical: {counts['Critical']} | High: {counts['High']} | Medium: {counts['Medium']} | Low: {counts['Low']}</p><p><strong>Human review:</strong> {review_summary}</p><p>{html.escape(result['score_explanation'])}</p><p><a class='button' href='/export/package?token={token}'>Download review package ZIP</a> <a class='button' href='/export/findings?token={token}'>Download findings CSV</a> <a class='button' href='/export/review?token={token}'>Download review CSV</a> <a class='button' href='/export/summary?token={token}'>Download management summary HTML</a> <a href='/'>{html.escape(start_audit_label)}</a></p></section>{attention_html}{controls}<section class='card' id='findings' tabindex='-1' aria-labelledby='findings-heading'><h2 id='findings-heading'>Findings review</h2><p>Review state is temporary and local to this session. It does not alter the original estimate, deterministic findings, severity, or score. Suppressed findings require a reason.</p><form action='/review' method='post'><input type='hidden' name='token' value='{html.escape(token, quote=True)}'><div style='overflow:auto'><table aria-describedby='findings-caption'><caption id='findings-caption'>Visible deterministic findings and human review controls</caption><thead><tr><th>Severity</th><th>Rule</th><th>Sheet</th><th>Row</th><th>Field</th><th>Finding</th><th>Evidence</th><th>Recommended action</th><th>Review status</th><th>Reason / note</th></tr></thead><tbody>{rows}</tbody></table></div><p><button type='submit'>Save visible review states</button> <a href='#filters'>Back to filters</a></p></form></section>{reference_html}""")
 
 
 _server.findings_page = findings_page
