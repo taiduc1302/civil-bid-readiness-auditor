@@ -142,7 +142,7 @@ def build_archived_review_session(package_filename: str, data: bytes) -> dict[st
         "review_metrics": review_metrics,
         "score_explanation": (
             "Archived review snapshot compatibility score reconstructed only from the stored finding severities using the legacy weighting formula. "
-            "The original estimate/reference bytes are absent and deterministic audit/reference rules were not rerun. "
+            "The original estimate bytes are absent, the original reference bytes are absent, and deterministic audit/reference rules were not rerun. "
             f"Archived source package: {source_package_filename}; SHA-256: {package_sha256}. "
             "This package identity describes the archived snapshot only and does not prove that any current estimate or reference file still matches it."
         ),
