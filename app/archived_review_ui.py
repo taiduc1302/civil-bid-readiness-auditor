@@ -40,24 +40,31 @@ def continuation_page_body(error: str = "") -> str:
     alert = f"<div class='error'><strong>Archived review was not opened.</strong> {html.escape(error)}</div>" if error else ""
     return f"""{alert}
 <section class='card'>
-<h2>Continue human review from an archived snapshot</h2>
-<div class='notice'><strong>This is not an estimate re-audit.</strong> Review-package ZIPs intentionally exclude the original estimate and reference file bytes. This flow resumes only the archived findings, human dispositions, and recorded reference evidence.</div>
-<h3>Available in an archived review continuation</h3>
+<h2>Review-package re-open contract</h2>
+<div class='notice'><strong>A review package is archived review evidence, not a restorable estimate-audit workspace.</strong> Review-package ZIPs intentionally exclude the original estimate and reference file bytes.</div>
+<h3>1. Verify package — read-only</h3>
+<p>Verification checks the package structure, SHA-256 integrity, and semantic consistency. It does not create or restore a review session and does not retain the uploaded ZIP.</p>
+<h3>2. Continue archived human review — snapshot continuation</h3>
+<p>This flow creates a temporary <code>archived_review_snapshot</code> session from verified archived findings, human dispositions, and recorded reference evidence only. Human dispositions may continue to change; the archived deterministic findings/reference checks remain evidence from the prior snapshot.</p>
+<h3>3. True estimate re-audit — new source-backed audit</h3>
+<p>A true re-audit is not available from a review-package ZIP. It requires the original estimate bytes to be supplied again through the normal audit flow, plus any governed reference bytes required for reference validation. That creates a new source-backed audit; it is not restoration of this archived session.</p>
+<h3>Available in archived continuation</h3>
 <ul>
 <li>filter, sort, group, and inspect archived findings/reference checks;</li>
 <li>change human finding dispositions, including the existing explicit two-step bulk flow;</li>
-<li>export findings/review/reference evidence and a new review-package snapshot.</li>
+<li>export findings/review/reference evidence and a new review-package snapshot with continuation provenance.</li>
 </ul>
-<h3>Not available</h3>
+<h3>Unavailable in archived continuation</h3>
 <ul>
 <li>column remapping or deterministic estimate re-audit;</li>
 <li>replacement/rerun of governed Activity/Resource references;</li>
-<li>proof that the archived source estimate still matches any current project file.</li>
+<li>proof that the archived source estimate or reference files still match any current project files;</li>
+<li>editable restoration of the original estimate/audit workspace.</li>
 </ul>
 <form action='/continue-review-package' method='post' enctype='multipart/form-data'>
 <p><label>Verified review-package ZIP <input type='file' name='review_package' accept='.zip,application/zip' required></label></p>
 <p><label><input type='checkbox' name='archived_review_ack' value='yes' required> I understand this continues human review of archived evidence only and does not restore or re-audit the original estimate.</label></p>
-<p><button type='submit'>Open archived review continuation</button> <a href='/verify-package'>Verify package first</a> <a href='/'>Back to home</a></p>
+<p><button type='submit'>Open archived review continuation</button> <a href='/verify-package'>Verify package first</a> <a href='/'>Start a new source-backed audit</a></p>
 </form>
 <p class='visually-helpful'>The ZIP is re-verified for structure, SHA-256 integrity, and semantic consistency before the temporary continuation session is created. The package bytes themselves are not retained in the session.</p>
 </section>"""
@@ -117,7 +124,7 @@ def install_archived_review_ui() -> None:
             body += """
 <section class='card'>
 <h2>Continue this as archived human review?</h2>
-<p>The verifier remains read-only and did not retain your ZIP. To continue human dispositions from the archived snapshot, use the separate continuation flow and select the package again.</p>
+<p>The verifier remains read-only and did not retain your ZIP. Continuing human review is a separate snapshot-continuation action, not restoration or re-audit. Select the package again and explicitly acknowledge that boundary.</p>
 <p><a class='button' href='/continue-review-package'>Open archived review continuation</a></p>
 </section>"""
         return body
