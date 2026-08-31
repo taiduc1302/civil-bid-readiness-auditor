@@ -28,6 +28,8 @@ This is a reviewable prototype, not production-ready estimating software and not
 
 Temporary review sessions expire after **30 minutes of inactivity**, not simply 30 minutes after creation. Valid access refreshes the idle timer. State-sensitive operations on the same token are serialized in memory so concurrent audit/review/reference/bulk requests cannot interleave their read/validate/write steps; different session tokens remain independently concurrent. This is local process-memory coordination only, not persistent or multi-user storage.
 
+Public runtime features are assembled by one explicit deterministic startup contract. Importing content modules such as onboarding does not install server behavior, and review-only augmentation uses stable internal page identity rather than display titles. Renaming a review page therefore cannot silently disable bulk controls or view-context preservation.
+
 ## Run locally
 
 Requires Python 3.12 or later and no third-party dependencies.
