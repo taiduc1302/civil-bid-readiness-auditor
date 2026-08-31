@@ -132,7 +132,7 @@ def install_review_view_context() -> None:
     original_do_post = _server.Handler.do_POST
 
     def contextual_page(title: str, body: str) -> bytes:
-        if title == "Audit results":
+        if title in ("Audit results", "Archived review snapshot"):
             body = _inject_view_context(body)
         return original_page(title, body)
 
