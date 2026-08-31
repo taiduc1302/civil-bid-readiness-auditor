@@ -53,4 +53,4 @@ All bundled examples, structured demo inputs, and reference fixtures are fiction
 
 ## Public snapshot boundary
 
-This repository intentionally excludes local automation logs, project-control state, release archives, runtime records, company codebooks, and personal/local path data. See `CLAIMS_LEDGER.md`, `NOTICE`, `product/archived_review_contract.md`, `product/review_delta_contract.md`, and `product/post_consolidation_roadmap.md`.
+This repository intentionally excludes local automation logs, project-control state, release archives, runtime records, company codebooks, and personal/local path data. The original **2026-08-19** public-snapshot allowlist/hash record is preserved under the dated `provenance/initial_public_snapshot_2026-08-19/` namespace as historical evidence only; it is not a current-tree integrity manifest. There is currently no generated current-release source-tree allowlist manifest. See `provenance/README.md`, `CLAIMS_LEDGER.md`, `NOTICE`, `product/archived_review_contract.md`, `product/review_delta_contract.md`, and `product/post_consolidation_roadmap.md`.
