@@ -1,7 +1,11 @@
+import sys
 import threading
 import unittest
+from pathlib import Path
 
-from app.session_state import clear_session_locks, expire_sessions, register_session, session_scope
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
+
+from session_state import clear_session_locks, expire_sessions, register_session, session_scope
 
 
 class SessionStateTests(unittest.TestCase):
