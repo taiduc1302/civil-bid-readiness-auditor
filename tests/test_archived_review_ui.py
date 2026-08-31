@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import http.client
 import io
 import json
@@ -19,7 +20,7 @@ from archived_review import ARCHIVED_REVIEW_SESSION_MODE, build_archived_review_
 from audit_engine import audit, parse_upload
 from finding_review import default_dispositions
 from review_package import build_review_package, verify_review_package
-from server import Handler, SESSIONS, ThreadingHTTPServer
+from server import Handler, SESSIONS, ThreadingHTTPServer, findings_page
 
 
 class ArchivedReviewUiTests(unittest.TestCase):
@@ -102,9 +103,14 @@ class ArchivedReviewUiTests(unittest.TestCase):
     def test_get_contract_and_verifier_link_are_explicitly_not_reaudit(self):
         status, _, page = self.request("GET", "/continue-review-package")
         self.assertEqual(status, 200)
-        self.assertIn(b"This is not an estimate re-audit", page)
+        self.assertIn(b"Review-package re-open contract", page)
+        self.assertIn(b"Verify package", page)
+        self.assertIn(b"Continue archived human review", page)
+        self.assertIn(b"True estimate re-audit", page)
+        self.assertIn(b"not a restorable estimate-audit workspace", page)
         self.assertIn(b"original estimate and reference file bytes", page)
         self.assertIn(b"archived_review_ack", page)
+        self.assertIn(b"Start a new source-backed audit", page)
 
         package, filename = self.package()
         boundary = "----verify-archived-link"
@@ -118,6 +124,7 @@ class ArchivedReviewUiTests(unittest.TestCase):
         })
         self.assertEqual(status, 200)
         self.assertIn(b"Open archived review continuation", verified)
+        self.assertIn(b"not restoration or re-audit", verified)
         self.assertEqual(SESSIONS, {})
 
     def test_acknowledgement_is_required_before_session_creation(self):
@@ -129,16 +136,30 @@ class ArchivedReviewUiTests(unittest.TestCase):
         self.assertEqual(SESSIONS, {})
 
     def test_archived_session_supports_human_review_but_not_audit_or_reference_rerun(self):
-        token, page, _, _ = self.open_archived_review()
+        token, page, package, filename = self.open_archived_review()
         session = SESSIONS[token]
+        expected_hash = hashlib.sha256(package).hexdigest().encode()
         self.assertEqual(session["session_mode"], ARCHIVED_REVIEW_SESSION_MODE)
         self.assertNotIn("audit_sheets", session)
         self.assertEqual(session["sheets"], {})
         self.assertIn(b"Archived review snapshot", page)
+        self.assertIn(b"Archived review snapshot \xe2\x80\x94 continuation only", page)
+        self.assertIn(b"not a restored or re-audited estimate", page)
+        self.assertIn(filename.encode(), page)
+        self.assertIn(expected_hash, page)
+        self.assertIn(b"human finding dispositions and notes only", page)
+        self.assertIn(b"Start a new source-backed audit", page)
         self.assertIn(b"No estimate re-audit", page)
         self.assertIn(b"Select for bulk", page)
         self.assertIn(b"Archived reference evidence only", page)
         self.assertNotIn(b"Validate against supplied references", page)
+
+        status, _, filtered = self.request("GET", f"/results?token={token}&severity=High")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Archived review snapshot \xe2\x80\x94 continuation only", filtered)
+        self.assertIn(filename.encode(), filtered)
+        self.assertIn(expected_hash, filtered)
+        self.assertIn(b"True re-audit requires", filtered)
 
         status, _, reviewed = self.post_form("/review", [
             ("token", token),
@@ -147,6 +168,9 @@ class ArchivedReviewUiTests(unittest.TestCase):
         ])
         self.assertEqual(status, 200)
         self.assertIn(b"Review states saved", reviewed)
+        self.assertIn(b"Archived review snapshot \xe2\x80\x94 continuation only", reviewed)
+        self.assertIn(filename.encode(), reviewed)
+        self.assertIn(expected_hash, reviewed)
         self.assertEqual(SESSIONS[token]["dispositions"][1]["status"], "Reviewed")
 
         before_result = copy.deepcopy(SESSIONS[token]["result"])
@@ -164,6 +188,20 @@ class ArchivedReviewUiTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn(b"temporary audit session expired", reference_page)
         self.assertEqual(SESSIONS[token]["result"], before_result)
+
+    def test_normal_audit_result_does_not_show_archived_provenance_contract(self):
+        sample = ROOT / "samples" / "synthetic_civil_estimate.csv"
+        result = audit(parse_upload(sample.name, sample.read_bytes()))
+        session = {
+            "filename": sample.name,
+            "result": result,
+            "dispositions": default_dispositions(result),
+            "mappings": {},
+        }
+        page = findings_page("live-token", session)
+        self.assertNotIn(b"archived-provenance", page)
+        self.assertNotIn(b"Archived review snapshot \xe2\x80\x94 continuation only", page)
+        self.assertIn(b"Start another audit", page)
 
     def test_reexported_package_records_snapshot_derived_provenance_and_can_be_reopened(self):
         token, _, _, source_name = self.open_archived_review()
