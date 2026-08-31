@@ -126,7 +126,7 @@ def build_archived_review_session(package_filename: str, data: bytes) -> dict[st
     rows_reviewed = _int_value(full.get("rows_reviewed", 0), "rows reviewed")
     affected_percent = round((len(affected) / rows_reviewed * 100), 2) if rows_reviewed else 0.0
     review_metrics = {
-        "status": "Archived review snapshot — continued human review only; no estimate re-audit performed",
+        "status": "Archived review snapshot — no estimate re-audit performed",
         "finding_count": len(findings),
         "affected_rows": len(affected),
         "affected_row_percent": affected_percent,
