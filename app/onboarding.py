@@ -1,17 +1,9 @@
-"""Static fictional onboarding content for the local review workflow."""
+"""Static fictional onboarding content for the local review workflow.
+
+Runtime feature installation is intentionally owned by ``runtime_composition``;
+importing this content module has no server side effects.
+"""
 from __future__ import annotations
-
-from accessibility import install_accessibility_semantics
-from archived_review_ui import install_archived_review_ui
-from bulk_review_ui import install_bulk_review_ui
-from review_delta_ui import install_review_delta_ui
-from review_view_context import install_review_view_context
-
-install_accessibility_semantics()
-install_bulk_review_ui()
-install_review_view_context()
-install_archived_review_ui()
-install_review_delta_ui()
 
 
 def guide_body() -> str:
