@@ -1,7 +1,7 @@
 """Two-step explicit-selection browser flow for bulk human finding dispositions.
 
 The installer augments the existing public review page without changing
-`server.py` or `server_legacy.py`. Bulk review remains explicit and two-step:
+deterministic audit semantics. Bulk review remains explicit and two-step:
 checked rows -> preview (no disposition mutation) -> one-time confirmed apply.
 """
 from __future__ import annotations
@@ -15,6 +15,7 @@ import server_legacy as _server
 from bulk_review import apply_bulk_review_plan, build_bulk_review_plan
 from finding_review import REVIEW_STATUSES
 from review_view_context import results_return_url, sanitize_view_query, view_filters
+from runtime_context import PAGE_KIND_REVIEW_FINDINGS, current_page_kind
 
 _MAX_FORM_BYTES = 512 * 1024
 
@@ -153,8 +154,6 @@ def _handle_preview(handler: _server.BaseHTTPRequestHandler, form: dict[str, lis
             ownership_acknowledged=ownership,
         )
         plan_token = secrets.token_urlsafe(18)
-        # One current preview per review session. A new preview invalidates any
-        # older plan/context while the session lock is held.
         session["bulk_review_plans"] = {plan_token: plan}
         session["bulk_review_return_queries"] = {plan_token: view_query}
         rendered = _preview_page(token, plan_token, session, plan, view_query)
@@ -187,8 +186,6 @@ def _handle_apply(handler: _server.BaseHTTPRequestHandler, form: dict[str, list[
             return_queries.pop(plan_token, None)
             raise
 
-        # Invalidate the one-time plan before publishing the new disposition map.
-        # A concurrent replay waits on this same lock and therefore sees no plan.
         plans.pop(plan_token, None)
         return_queries.pop(plan_token, None)
         session["dispositions"] = pending
@@ -219,7 +216,7 @@ def install_bulk_review_ui() -> None:
         return rendered.replace("</tr>", cell + "</tr>", 1)
 
     def bulk_page(title: str, body: str) -> bytes:
-        if title in ("Audit results", "Archived review snapshot"):
+        if current_page_kind() == PAGE_KIND_REVIEW_FINDINGS:
             body = _inject_bulk_controls(body)
         return original_page(title, body)
 

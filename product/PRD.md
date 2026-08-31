@@ -41,6 +41,7 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 31. GitHub Actions test matrix on supported Python versions.
 32. Review Delta / Change Intelligence: an in-memory comparison of two independently verified review-package snapshots. Findings align by unique sheet/row/rule/field anchors so deterministic evidence changes are separated from human status/reason changes; governed reference checks and role-linked reference metadata are compared independently. Ambiguous duplicate anchors fail closed, no review session is created, no audit/reference logic is rerun, and no improvement/correctness/readiness judgement is inferred.
 33. Temporary-session concurrency hardening for the local `ThreadingHTTPServer`: one in-memory lock per session token serializes state-sensitive read/validate/write operations while different tokens remain independently concurrent. Active lookup refreshes a 30-minute idle timeout, expiry skips a session while an active request holds its lock, and one-time bulk plans cannot be applied twice by concurrent requests.
+34. Explicit deterministic public-runtime composition: one startup composer invokes the idempotent accessibility, bulk-review, review-view-context, archived-review, and Review Delta feature installers. Content modules such as onboarding are side-effect free, and review-only renderer augmentation uses stable internal page identity rather than user-visible display-title strings.
 
 ## Next product milestone
 
