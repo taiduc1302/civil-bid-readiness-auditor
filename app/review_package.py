@@ -176,7 +176,13 @@ def verify_review_package(data: bytes) -> dict[str, Any]:
         raise ValueError("Review package is not a readable ZIP archive.") from exc
 
     with book:
-        infos = [info for info in book.infolist() if not info.is_dir()]
+        infos = book.infolist()
+        directories = [info.filename for info in infos if info.is_dir()]
+        if directories:
+            raise ValueError(
+                "Review package contains unsupported directory entries: " + ", ".join(sorted(directories))
+            )
+
         names = [info.filename for info in infos]
         for name in names:
             _validate_member_name(name)
