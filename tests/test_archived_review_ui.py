@@ -151,18 +151,24 @@ class ArchivedReviewUiTests(unittest.TestCase):
         self.assertIn(b"Start a new source-backed audit", page)
         self.assertIn(b"No estimate re-audit", page)
         self.assertIn(b"Select for bulk", page)
+        self.assertIn(b"name='view_query'", page)
         self.assertIn(b"Archived reference evidence only", page)
         self.assertNotIn(b"Validate against supplied references", page)
 
-        status, _, filtered = self.request("GET", f"/results?token={token}&severity=High")
+        view_query = "severity=High&sort_by=source&ref_status=All&ref_sort=code"
+        status, _, filtered = self.request("GET", f"/results?token={token}&{view_query}")
         self.assertEqual(status, 200)
         self.assertIn(b"Archived review snapshot \xe2\x80\x94 continuation only", filtered)
         self.assertIn(filename.encode(), filtered)
         self.assertIn(expected_hash, filtered)
         self.assertIn(b"true re-audit requires", filtered.lower())
+        self.assertIn(b"name='view_query'", filtered)
+        self.assertIn(b"<option value='High' selected>High</option>", filtered)
+        self.assertIn(b"<option value='source' selected>Source sheet / row</option>", filtered)
 
         status, _, reviewed = self.post_form("/review", [
             ("token", token),
+            ("view_query", view_query),
             ("status__1", "Reviewed"),
             ("reason__1", "Continued from archived snapshot"),
         ])
@@ -171,6 +177,8 @@ class ArchivedReviewUiTests(unittest.TestCase):
         self.assertIn(b"Archived review snapshot \xe2\x80\x94 continuation only", reviewed)
         self.assertIn(filename.encode(), reviewed)
         self.assertIn(expected_hash, reviewed)
+        self.assertIn(b"<option value='High' selected>High</option>", reviewed)
+        self.assertIn(b"<option value='source' selected>Source sheet / row</option>", reviewed)
         self.assertEqual(SESSIONS[token]["dispositions"][1]["status"], "Reviewed")
 
         before_result = copy.deepcopy(SESSIONS[token]["result"])
