@@ -130,6 +130,36 @@ class BulkReviewUiTests(unittest.TestCase):
         self.assertIn(b"missing, expired, replaced, or already used", replay)
         self.assertEqual(SESSIONS[token]["dispositions"][1]["status"], "Reviewed")
 
+    def test_concurrent_apply_replay_allows_exactly_one_success(self):
+        token, _ = self.audited_sample()
+        status, _, plan_token = self.preview(token, [1, 2], status="Accepted", reason="One-time concurrent test")
+        self.assertEqual(status, 200)
+        start = threading.Barrier(3)
+        result_lock = threading.Lock()
+        outcomes = []
+
+        def worker():
+            start.wait()
+            outcome = self.apply(token, plan_token)
+            with result_lock:
+                outcomes.append(outcome)
+
+        threads = [threading.Thread(target=worker), threading.Thread(target=worker)]
+        for thread in threads:
+            thread.start()
+        start.wait()
+        for thread in threads:
+            thread.join(5.0)
+            self.assertFalse(thread.is_alive())
+
+        self.assertEqual(sorted(item[0] for item in outcomes), [200, 400])
+        bodies = [item[2] for item in outcomes]
+        self.assertEqual(sum(b"Bulk review applied to 2 explicitly selected finding" in body for body in bodies), 1)
+        self.assertEqual(sum(b"missing, expired, replaced, or already used" in body for body in bodies), 1)
+        self.assertEqual(SESSIONS[token]["dispositions"][1], {"status": "Accepted", "reason": "One-time concurrent test"})
+        self.assertEqual(SESSIONS[token]["dispositions"][2], {"status": "Accepted", "reason": "One-time concurrent test"})
+        self.assertNotIn(plan_token, SESSIONS[token].get("bulk_review_plans", {}))
+
     def test_missing_selection_ownership_and_suppression_reason_fail_without_mutation(self):
         token, _ = self.audited_sample()
         before = copy.deepcopy(SESSIONS[token]["dispositions"])

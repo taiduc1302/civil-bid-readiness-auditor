@@ -187,11 +187,32 @@ class ArchivedReviewUiTests(unittest.TestCase):
         self.assertIn(b"Select at least one sheet", audit_page)
         self.assertEqual(SESSIONS[token]["result"], before_result)
 
-        status, _, reference_page = self.request(
+        status, _, malformed_page = self.request(
             "POST",
             f"/references?token={token}",
             b"",
             {"Content-Length": "0"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn(b"Upload request must use multipart form data", malformed_page)
+        self.assertEqual(SESSIONS[token]["result"], before_result)
+
+        boundary = "----archived-reference-rerun"
+        reference_body = (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="resource_reference"; filename="resource.csv"\r\n'
+            "Content-Type: text/csv\r\n\r\n"
+            "resource_code,unit\r\nR1,EA\r\n"
+            f"--{boundary}--\r\n"
+        ).encode()
+        status, _, reference_page = self.request(
+            "POST",
+            f"/references?token={token}",
+            reference_body,
+            {
+                "Content-Type": f'multipart/form-data; boundary="{boundary}"',
+                "Content-Length": str(len(reference_body)),
+            },
         )
         self.assertEqual(status, 400)
         self.assertIn(b"temporary audit session expired", reference_page)

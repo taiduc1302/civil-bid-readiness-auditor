@@ -96,31 +96,30 @@ def _review_error_page(message: str, token: str = "", raw_view: str = "") -> byt
 
 def _handle_review(handler: _server.BaseHTTPRequestHandler, form: dict[str, list[str]]) -> None:
     token = form.get("token", [""])[0]
-    session = _server.SESSIONS.get(token)
-    if not session or "result" not in session:
-        raise _server.InputError("This temporary audit session expired. Upload the file again.")
-
-    current = session.setdefault("dispositions", _server.default_dispositions(session["result"]))
-    pending = {finding_id: dict(state) for finding_id, state in current.items()}
-    for finding in session["result"]["findings"]:
-        finding_id = int(finding["id"])
-        _server.set_disposition(
-            pending,
-            finding_id,
-            form.get(f"status__{finding_id}", [pending[finding_id]["status"]])[0],
-            form.get(f"reason__{finding_id}", [pending[finding_id]["reason"]])[0],
-        )
-
-    session["dispositions"] = pending
     raw_view = form.get("view_query", [""])[0]
-    handler.send_html(
-        _server.findings_page(
+    with _server.session_scope(token) as session:
+        if not session or "result" not in session:
+            raise _server.InputError("This temporary audit session expired. Upload the file again.")
+
+        current = session.setdefault("dispositions", _server.default_dispositions(session["result"]))
+        pending = {finding_id: dict(state) for finding_id, state in current.items()}
+        for finding in session["result"]["findings"]:
+            finding_id = int(finding["id"])
+            _server.set_disposition(
+                pending,
+                finding_id,
+                form.get(f"status__{finding_id}", [pending[finding_id]["status"]])[0],
+                form.get(f"reason__{finding_id}", [pending[finding_id]["reason"]])[0],
+            )
+
+        session["dispositions"] = pending
+        rendered = _server.findings_page(
             token,
             session,
             "Review states saved for this temporary local session.",
             filters=view_filters(raw_view),
         )
-    )
+    handler.send_html(rendered)
 
 
 def install_review_view_context() -> None:

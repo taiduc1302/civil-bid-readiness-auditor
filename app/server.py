@@ -289,12 +289,12 @@ class Handler(_server.Handler):
         if parsed.path == "/export/references":
             _server.expire_sessions()
             token = parse_qs(parsed.query).get("token", [""])[0]
-            session = SESSIONS.get(token)
-            if not session or "result" not in session:
-                self.send_html(home("This temporary audit session is no longer available. Upload the file again."), HTTPStatus.NOT_FOUND)
-                return
-            content = reference_review_csv(session.get("reference_results", []), session.get("reference_metadata", []))
-            filename = "bid_audit_reference_checks.csv"
+            with _server.session_scope(token) as session:
+                if not session or "result" not in session:
+                    self.send_html(home("This temporary audit session is no longer available. Upload the file again."), HTTPStatus.NOT_FOUND)
+                    return
+                content = reference_review_csv(session.get("reference_results", []), session.get("reference_metadata", []))
+                filename = "bid_audit_reference_checks.csv"
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
@@ -305,11 +305,11 @@ class Handler(_server.Handler):
         if parsed.path == "/export/package":
             _server.expire_sessions()
             token = parse_qs(parsed.query).get("token", [""])[0]
-            session = SESSIONS.get(token)
-            if not session or "result" not in session:
-                self.send_html(home("This temporary audit session is no longer available. Upload the file again."), HTTPStatus.NOT_FOUND)
-                return
-            content, filename = build_review_package(session)
+            with _server.session_scope(token) as session:
+                if not session or "result" not in session:
+                    self.send_html(home("This temporary audit session is no longer available. Upload the file again."), HTTPStatus.NOT_FOUND)
+                    return
+                content, filename = build_review_package(session)
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
@@ -321,25 +321,26 @@ class Handler(_server.Handler):
             _server.expire_sessions()
             query = parse_qs(parsed.query, keep_blank_values=True)
             token = query.get("token", [""])[0]
-            session = SESSIONS.get(token)
-            if not session or "result" not in session:
-                self.send_html(home("This temporary audit session is no longer available. Upload the file again."), HTTPStatus.NOT_FOUND)
-                return
-            filters = {
-                "severity": query.get("severity", [""])[0],
-                "review_status": query.get("review_status", [""])[0],
-                "rule_id": query.get("rule_id", [""])[0],
-                "sheet": query.get("sheet", [""])[0],
-                "q": query.get("q", [""])[0],
-                "sort_by": query.get("sort_by", ["priority"])[0],
-                "group_by": query.get("group_by", [""])[0],
-                "ref_status": query.get("ref_status", ["Exceptions"])[0],
-                "ref_type": query.get("ref_type", [""])[0],
-                "ref_q": query.get("ref_q", [""])[0],
-                "ref_sort": query.get("ref_sort", ["status"])[0],
-                "ref_group": query.get("ref_group", [""])[0],
-            }
-            self.send_html(findings_page(token, session, filters=filters))
+            with _server.session_scope(token) as session:
+                if not session or "result" not in session:
+                    self.send_html(home("This temporary audit session is no longer available. Upload the file again."), HTTPStatus.NOT_FOUND)
+                    return
+                filters = {
+                    "severity": query.get("severity", [""])[0],
+                    "review_status": query.get("review_status", [""])[0],
+                    "rule_id": query.get("rule_id", [""])[0],
+                    "sheet": query.get("sheet", [""])[0],
+                    "q": query.get("q", [""])[0],
+                    "sort_by": query.get("sort_by", ["priority"])[0],
+                    "group_by": query.get("group_by", [""])[0],
+                    "ref_status": query.get("ref_status", ["Exceptions"])[0],
+                    "ref_type": query.get("ref_type", [""])[0],
+                    "ref_q": query.get("ref_q", [""])[0],
+                    "ref_sort": query.get("ref_sort", ["status"])[0],
+                    "ref_group": query.get("ref_group", [""])[0],
+                }
+                rendered = findings_page(token, session, filters=filters)
+            self.send_html(rendered)
             return
         super().do_GET()
 
@@ -350,10 +351,9 @@ class Handler(_server.Handler):
             session = {
                 "filename": filename,
                 "sheets": _server.parse_upload(filename, data),
-                "created": _server.time.monotonic(),
             }
             token = _server.secrets.token_urlsafe(18)
-            SESSIONS[token] = session
+            _server.store_session(token, session)
             self.send_html(_server.mapping_page(token, session))
             return
         if parsed.path == "/verify-package":
@@ -369,14 +369,15 @@ class Handler(_server.Handler):
             _server.expire_sessions()
             try:
                 token = parse_qs(parsed.query).get("token", [""])[0]
-                session = SESSIONS.get(token)
-                if not session or "result" not in session or "audit_sheets" not in session:
-                    raise InputError("This temporary audit session expired. Upload the estimate again.")
                 message = _server._multipart_message(self)
                 uploads, revisions = parse_reference_multipart(message)
-                pending = validate_reference_submission(session, uploads, revisions)
-                session.update(pending)
-                self.send_html(findings_page(token, session, "Governed reference validation completed using the explicitly supplied CSV file(s). Evidence metadata was recorded for this temporary session."))
+                with _server.session_scope(token) as session:
+                    if not session or "result" not in session or "audit_sheets" not in session:
+                        raise InputError("This temporary audit session expired. Upload the estimate again.")
+                    pending = validate_reference_submission(session, uploads, revisions)
+                    session.update(pending)
+                    rendered = findings_page(token, session, "Governed reference validation completed using the explicitly supplied CSV file(s). Evidence metadata was recorded for this temporary session.")
+                self.send_html(rendered)
             except (InputError, ValueError) as exc:
                 self.send_html(home(str(exc)), HTTPStatus.BAD_REQUEST)
             return

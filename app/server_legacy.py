@@ -15,6 +15,7 @@ from audit_engine import InputError, OPTIONAL_FIELDS, REQUIRED_FIELDS, audit, co
 from finding_review import REVIEW_STATUSES, default_dispositions, findings_review_csv, review_metrics, set_disposition
 from heavybid_adapter import PROFILE_HEAVYBID_STYLE_RESOURCE_EXPORT, detect_heavybid_style_export, map_heavybid_style_headers
 from reference_validation import REFERENCE_STATUSES, build_reference_index, canonicalize_export_rows, parse_reference_csv, reference_results_csv, validate_export_rows
+from session_state import expire_sessions as _expire_session_registry, register_session as _register_session, session_scope as _session_scope
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -29,9 +30,18 @@ body{font-family:Arial,sans-serif;margin:0;background:#f4f7f9;color:#17212b}main
 
 
 def expire_sessions() -> None:
-    now = time.monotonic()
-    for token in [key for key, value in SESSIONS.items() if now - value["created"] > SESSION_TTL_SECONDS]:
-        SESSIONS.pop(token, None)
+    """Expire sessions by idle time without interrupting an active request."""
+    _expire_session_registry(SESSIONS, SESSION_TTL_SECONDS)
+
+
+def store_session(token: str, session: dict) -> dict:
+    """Register a new local session with created + last-access timestamps."""
+    return _register_session(SESSIONS, token, session)
+
+
+def session_scope(token: str, *, touch: bool = True):
+    """Return the per-session atomic access context used by all stateful routes."""
+    return _session_scope(SESSIONS, token, SESSION_TTL_SECONDS, touch=touch)
 
 
 def page(title: str, body: str) -> bytes:
@@ -172,21 +182,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path.startswith("/export/"):
             token = parse_qs(parsed.query).get("token", [""])[0]
-            session = SESSIONS.get(token)
-            if not session or "result" not in session:
-                self.send_html(home("This temporary audit session is no longer available. Upload the file again."), HTTPStatus.NOT_FOUND)
-                return
-            if parsed.path.endswith("findings"):
-                content, filename, ctype = findings_csv(session["result"]), "bid_audit_findings.csv", "text/csv; charset=utf-8"
-            elif parsed.path.endswith("review"):
-                content, filename, ctype = findings_review_csv(session["result"], session.setdefault("dispositions", default_dispositions(session["result"]))), "bid_audit_review.csv", "text/csv; charset=utf-8"
-            elif parsed.path.endswith("references"):
-                content, filename, ctype = reference_results_csv(session.get("reference_results", [])), "bid_audit_reference_checks.csv", "text/csv; charset=utf-8"
-            elif parsed.path.endswith("summary"):
-                content, filename, ctype = management_summary_html(session["result"], session["filename"]), "bid_audit_management_summary.html", "text/html; charset=utf-8"
-            else:
-                self.send_html(home("Unknown export."), HTTPStatus.NOT_FOUND)
-                return
+            with session_scope(token) as session:
+                if not session or "result" not in session:
+                    self.send_html(home("This temporary audit session is no longer available. Upload the file again."), HTTPStatus.NOT_FOUND)
+                    return
+                if parsed.path.endswith("findings"):
+                    content, filename, ctype = findings_csv(session["result"]), "bid_audit_findings.csv", "text/csv; charset=utf-8"
+                elif parsed.path.endswith("review"):
+                    content, filename, ctype = findings_review_csv(session["result"], session.setdefault("dispositions", default_dispositions(session["result"]))), "bid_audit_review.csv", "text/csv; charset=utf-8"
+                elif parsed.path.endswith("references"):
+                    content, filename, ctype = reference_results_csv(session.get("reference_results", [])), "bid_audit_reference_checks.csv", "text/csv; charset=utf-8"
+                elif parsed.path.endswith("summary"):
+                    content, filename, ctype = management_summary_html(session["result"], session["filename"]), "bid_audit_management_summary.html", "text/html; charset=utf-8"
+                else:
+                    self.send_html(home("Unknown export."), HTTPStatus.NOT_FOUND)
+                    return
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
@@ -202,91 +212,92 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path == "/prepare":
                 name, data = read_uploaded_file(self)
-                session = {"filename": Path(name).name, "sheets": parse_upload(name, data), "created": time.monotonic()}
+                session = {"filename": Path(name).name, "sheets": parse_upload(name, data)}
                 token = secrets.token_urlsafe(18)
-                SESSIONS[token] = session
+                store_session(token, session)
                 self.send_html(mapping_page(token, session))
                 return
             if parsed.path == "/sample":
-                session = {"filename": SAMPLE.name, "sheets": parse_upload(SAMPLE.name, SAMPLE.read_bytes()), "created": time.monotonic()}
+                session = {"filename": SAMPLE.name, "sheets": parse_upload(SAMPLE.name, SAMPLE.read_bytes())}
                 token = secrets.token_urlsafe(18)
-                SESSIONS[token] = session
+                store_session(token, session)
                 self.send_html(mapping_page(token, session))
                 return
             if parsed.path == "/audit":
                 form = self._form()
                 token = form.get("token", [""])[0]
-                session = SESSIONS.get(token)
-                if not session:
-                    raise InputError("This temporary audit session expired. Upload the file again.")
-                selected: dict[str, list[dict[str, str]]] = {}
-                mappings: dict[str, dict[str, str]] = {}
-                for sheet, rows in session["sheets"].items():
-                    encoded = quote(sheet, safe="")
-                    mappings[sheet] = {}
-                    for field in (*REQUIRED_FIELDS, *OPTIONAL_FIELDS):
-                        value = form.get(f"map__{encoded}__{field}", [""])[0]
-                        if value:
-                            mappings[sheet][field] = value
-                    if form.get(f"include__{encoded}", [""])[0] == "1":
-                        selected[sheet] = rows
-                if not selected:
-                    selected = {sheet: rows for sheet, rows in session["sheets"].items() if all(mappings.get(sheet, {}).get(field) for field in REQUIRED_FIELDS)}
-                if not selected:
-                    raise InputError("Select at least one sheet with all required mappings.")
-                session["result"] = audit(selected, mappings)
-                session["audit_sheets"] = selected
-                session["mappings"] = mappings
-                session["dispositions"] = default_dispositions(session["result"])
-                session.pop("reference_results", None)
-                session.pop("reference_sources", None)
-                self.send_html(findings_page(token, session))
+                with session_scope(token) as session:
+                    if not session:
+                        raise InputError("This temporary audit session expired. Upload the file again.")
+                    selected: dict[str, list[dict[str, str]]] = {}
+                    mappings: dict[str, dict[str, str]] = {}
+                    for sheet, rows in session["sheets"].items():
+                        encoded = quote(sheet, safe="")
+                        mappings[sheet] = {}
+                        for field in (*REQUIRED_FIELDS, *OPTIONAL_FIELDS):
+                            value = form.get(f"map__{encoded}__{field}", [""])[0]
+                            if value:
+                                mappings[sheet][field] = value
+                        if form.get(f"include__{encoded}", [""])[0] == "1":
+                            selected[sheet] = rows
+                    if not selected:
+                        selected = {sheet: rows for sheet, rows in session["sheets"].items() if all(mappings.get(sheet, {}).get(field) for field in REQUIRED_FIELDS)}
+                    if not selected:
+                        raise InputError("Select at least one sheet with all required mappings.")
+                    session["result"] = audit(selected, mappings)
+                    session["audit_sheets"] = selected
+                    session["mappings"] = mappings
+                    session["dispositions"] = default_dispositions(session["result"])
+                    session.pop("reference_results", None)
+                    session.pop("reference_sources", None)
+                    self.send_html(findings_page(token, session))
                 return
             if parsed.path == "/review":
                 form = self._form()
                 token = form.get("token", [""])[0]
-                session = SESSIONS.get(token)
-                if not session or "result" not in session:
-                    raise InputError("This temporary audit session expired. Upload the file again.")
-                current = session.setdefault("dispositions", default_dispositions(session["result"]))
-                pending = {finding_id: dict(state) for finding_id, state in current.items()}
-                for finding in session["result"]["findings"]:
-                    finding_id = int(finding["id"])
-                    set_disposition(pending, finding_id, form.get(f"status__{finding_id}", [pending[finding_id]["status"]])[0], form.get(f"reason__{finding_id}", [pending[finding_id]["reason"]])[0])
-                session["dispositions"] = pending
-                self.send_html(findings_page(token, session, "Review states saved for this temporary local session."))
+                with session_scope(token) as session:
+                    if not session or "result" not in session:
+                        raise InputError("This temporary audit session expired. Upload the file again.")
+                    current = session.setdefault("dispositions", default_dispositions(session["result"]))
+                    pending = {finding_id: dict(state) for finding_id, state in current.items()}
+                    for finding in session["result"]["findings"]:
+                        finding_id = int(finding["id"])
+                        set_disposition(pending, finding_id, form.get(f"status__{finding_id}", [pending[finding_id]["status"]])[0], form.get(f"reason__{finding_id}", [pending[finding_id]["reason"]])[0])
+                    session["dispositions"] = pending
+                    self.send_html(findings_page(token, session, "Review states saved for this temporary local session."))
                 return
             if parsed.path == "/references":
                 token = parse_qs(parsed.query).get("token", [""])[0]
-                session = SESSIONS.get(token)
-                if not session or "result" not in session or "audit_sheets" not in session:
-                    raise InputError("This temporary audit session expired. Upload the estimate again.")
                 uploads = read_named_uploads(self, {"activity_reference", "resource_reference"})
                 if not uploads:
                     raise InputError("Choose at least one Activity or Resource reference CSV.")
-                mappings = session.get("mappings", {})
-                activity_index = resource_index = None
-                sources: list[str] = []
-                if "activity_reference" in uploads:
-                    if not any(mapping.get("activity") for mapping in mappings.values()):
-                        raise InputError("Activity reference was supplied, but no Activity field is mapped in the audited estimate.")
-                    name, data = uploads["activity_reference"]
-                    if Path(name).suffix.casefold() != ".csv":
-                        raise InputError("Activity reference must be a CSV file.")
-                    activity_index = build_reference_index(parse_reference_csv(data, "activity_code"), "activity_code")
-                    sources.append(name)
-                if "resource_reference" in uploads:
-                    if not any(mapping.get("resource_code") for mapping in mappings.values()):
-                        raise InputError("Resource reference was supplied, but no Resource Code field is mapped in the audited estimate.")
-                    name, data = uploads["resource_reference"]
-                    if Path(name).suffix.casefold() != ".csv":
-                        raise InputError("Resource reference must be a CSV file.")
-                    resource_index = build_reference_index(parse_reference_csv(data, "resource_code"), "resource_code")
-                    sources.append(name)
-                canonical_rows = canonicalize_export_rows(session["audit_sheets"], mappings)
-                session["reference_results"] = validate_export_rows(canonical_rows, activity_index, resource_index)
-                session["reference_sources"] = sources
-                self.send_html(findings_page(token, session, "Governed reference validation completed using the explicitly supplied CSV file(s)."))
+                with session_scope(token) as session:
+                    if not session or "result" not in session or "audit_sheets" not in session:
+                        raise InputError("This temporary audit session expired. Upload the estimate again.")
+                    mappings = session.get("mappings", {})
+                    activity_index = resource_index = None
+                    sources: list[str] = []
+                    if "activity_reference" in uploads:
+                        if not any(mapping.get("activity") for mapping in mappings.values()):
+                            raise InputError("Activity reference was supplied, but no Activity field is mapped in the audited estimate.")
+                        name, data = uploads["activity_reference"]
+                        if Path(name).suffix.casefold() != ".csv":
+                            raise InputError("Activity reference must be a CSV file.")
+                        activity_index = build_reference_index(parse_reference_csv(data, "activity_code"), "activity_code")
+                        sources.append(name)
+                    if "resource_reference" in uploads:
+                        if not any(mapping.get("resource_code") for mapping in mappings.values()):
+                            raise InputError("Resource reference was supplied, but no Resource Code field is mapped in the audited estimate.")
+                        name, data = uploads["resource_reference"]
+                        if Path(name).suffix.casefold() != ".csv":
+                            raise InputError("Resource reference must be a CSV file.")
+                        resource_index = build_reference_index(parse_reference_csv(data, "resource_code"), "resource_code")
+                        sources.append(name)
+                    canonical_rows = canonicalize_export_rows(session["audit_sheets"], mappings)
+                    pending_results = validate_export_rows(canonical_rows, activity_index, resource_index)
+                    session["reference_results"] = pending_results
+                    session["reference_sources"] = sources
+                    self.send_html(findings_page(token, session, "Governed reference validation completed using the explicitly supplied CSV file(s)."))
                 return
         except (InputError, ValueError) as exc:
             self.send_html(home(str(exc)), HTTPStatus.BAD_REQUEST)

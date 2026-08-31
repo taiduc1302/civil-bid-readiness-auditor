@@ -154,9 +154,8 @@ def install_archived_review_ui() -> None:
                 )
             filename, payload = _package_verification.read_package_upload(message)
             session = build_archived_review_session(filename, payload)
-            session["created"] = _server.time.monotonic()
             token = _server.secrets.token_urlsafe(18)
-            _server.SESSIONS[token] = session
+            _server.store_session(token, session)
             self.send_html(
                 _server.findings_page(
                     token,
