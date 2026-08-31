@@ -24,10 +24,13 @@ HEAVYBID_STYLE_FIELDS: dict[str, tuple[str, ...]] = {
     "rate": ("Rate", "Unit Rate", "Unit Price"),
     "amount": ("Amount", "Total", "Extended Amount"),
     "category": ("Category", "Cost Category"),
+    "crew_code": ("Crew Code", "Crew", "Crew ID"),
+    "production_rate": ("Production Rate", "Prod Rate", "Prod. Rate"),
 }
 
 # Require hierarchy plus the four canonical audit fields before auto-selecting
-# this profile. A user may still map columns manually when a real export differs.
+# this profile. Operational Crew/Production fields are always optional and are
+# mapped only when explicitly present; they never affect profile detection.
 DETECTION_REQUIRED_FIELDS = (
     "bid_item",
     "activity",
@@ -71,5 +74,6 @@ def adapter_contract() -> dict[str, object]:
         "infers_missing_values": False,
         "validates_company_codebook": False,
         "converts_units": False,
+        "operational_fields_optional_explicit_only": True,
         "required_detection_fields": list(DETECTION_REQUIRED_FIELDS),
     }
