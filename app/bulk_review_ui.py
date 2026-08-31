@@ -80,13 +80,6 @@ def _one(form: dict[str, list[str]], key: str) -> str:
     return values[0] if values else ""
 
 
-def _session(token: str) -> dict:
-    session = _server.SESSIONS.get(token)
-    if not session or "result" not in session:
-        raise _server.InputError("This temporary audit session expired. Upload the estimate again.")
-    return session
-
-
 def _preview_page(token: str, plan_token: str, session: dict, plan: dict, view_query: str = "") -> bytes:
     findings = {int(item["id"]): item for item in session["result"].get("findings", [])}
     current = {item["id"]: item for item in plan["expected_current_states"]}
@@ -142,60 +135,69 @@ def _error_page(message: str, token: str = "", view_query: str = "") -> bytes:
 def _handle_preview(handler: _server.BaseHTTPRequestHandler, form: dict[str, list[str]]) -> None:
     _server.expire_sessions()
     token = _one(form, "token")
-    session = _session(token)
     selected = form.get("bulk_id", [])
     status = _one(form, "bulk_status")
     reason = _one(form, "bulk_reason")
     ownership = _one(form, "bulk_ownership") == "yes"
     view_query = sanitize_view_query(_one(form, "view_query"))
-    dispositions = session.setdefault("dispositions", _server.default_dispositions(session["result"]))
-    plan = build_bulk_review_plan(
-        session["result"],
-        dispositions,
-        selected,
-        status,
-        reason,
-        ownership_acknowledged=ownership,
-    )
-    plan_token = secrets.token_urlsafe(18)
-    # One current preview per review session. A new preview invalidates any older plan/context.
-    session["bulk_review_plans"] = {plan_token: plan}
-    session["bulk_review_return_queries"] = {plan_token: view_query}
-    handler.send_html(_preview_page(token, plan_token, session, plan, view_query))
+    with _server.session_scope(token) as session:
+        if not session or "result" not in session:
+            raise _server.InputError("This temporary audit session expired. Upload the estimate again.")
+        dispositions = session.setdefault("dispositions", _server.default_dispositions(session["result"]))
+        plan = build_bulk_review_plan(
+            session["result"],
+            dispositions,
+            selected,
+            status,
+            reason,
+            ownership_acknowledged=ownership,
+        )
+        plan_token = secrets.token_urlsafe(18)
+        # One current preview per review session. A new preview invalidates any
+        # older plan/context while the session lock is held.
+        session["bulk_review_plans"] = {plan_token: plan}
+        session["bulk_review_return_queries"] = {plan_token: view_query}
+        rendered = _preview_page(token, plan_token, session, plan, view_query)
+    handler.send_html(rendered)
 
 
 def _handle_apply(handler: _server.BaseHTTPRequestHandler, form: dict[str, list[str]]) -> None:
     _server.expire_sessions()
     token = _one(form, "token")
-    session = _session(token)
     plan_token = _one(form, "plan_token")
-    return_queries = session.get("bulk_review_return_queries", {})
-    view_query = return_queries.get(plan_token, sanitize_view_query(_one(form, "view_query")))
-    form["_resolved_view_query"] = [view_query]
+    with _server.session_scope(token) as session:
+        if not session or "result" not in session:
+            raise _server.InputError("This temporary audit session expired. Upload the estimate again.")
+        return_queries = session.get("bulk_review_return_queries", {})
+        view_query = return_queries.get(plan_token, sanitize_view_query(_one(form, "view_query")))
+        form["_resolved_view_query"] = [view_query]
 
-    if _one(form, "confirm_bulk_apply") != "yes":
-        raise _server.InputError("Bulk review apply requires explicit confirmation of the previewed one-time plan.")
-    plans = session.get("bulk_review_plans", {})
-    plan = plans.get(plan_token)
-    if not plan:
-        raise _server.InputError("Bulk review plan is missing, expired, replaced, or already used. Preview the selection again.")
+        if _one(form, "confirm_bulk_apply") != "yes":
+            raise _server.InputError("Bulk review apply requires explicit confirmation of the previewed one-time plan.")
+        plans = session.get("bulk_review_plans", {})
+        plan = plans.get(plan_token)
+        if not plan:
+            raise _server.InputError("Bulk review plan is missing, expired, replaced, or already used. Preview the selection again.")
 
-    dispositions = session.setdefault("dispositions", _server.default_dispositions(session["result"]))
-    try:
-        pending = apply_bulk_review_plan(session["result"], dispositions, plan)
-    except ValueError:
+        dispositions = session.setdefault("dispositions", _server.default_dispositions(session["result"]))
+        try:
+            pending = apply_bulk_review_plan(session["result"], dispositions, plan)
+        except ValueError:
+            plans.pop(plan_token, None)
+            return_queries.pop(plan_token, None)
+            raise
+
+        # Invalidate the one-time plan before publishing the new disposition map.
+        # A concurrent replay waits on this same lock and therefore sees no plan.
         plans.pop(plan_token, None)
         return_queries.pop(plan_token, None)
-        raise
-
-    plans.pop(plan_token, None)
-    return_queries.pop(plan_token, None)
-    session["dispositions"] = pending
-    message = (
-        f"Bulk review applied to {plan['target_count']} explicitly selected finding(s): "
-        f"{plan['target_status']}."
-    )
-    handler.send_html(_server.findings_page(token, session, message, filters=view_filters(view_query)))
+        session["dispositions"] = pending
+        message = (
+            f"Bulk review applied to {plan['target_count']} explicitly selected finding(s): "
+            f"{plan['target_status']}."
+        )
+        rendered = _server.findings_page(token, session, message, filters=view_filters(view_query))
+    handler.send_html(rendered)
 
 
 def install_bulk_review_ui() -> None:
