@@ -79,6 +79,8 @@ def build_archived_review_session(package_filename: str, data: bytes) -> dict[st
     add its normal in-memory session timestamp before storing this object.
     """
     payload = bytes(data)
+    package_sha256 = hashlib.sha256(payload).hexdigest()
+    source_package_filename = str(package_filename or "review-package.zip")
     verified = verify_review_package(payload)
     preview = verified.get("snapshot_preview") or {}
     finding_total = _int_value(preview.get("finding_total", 0), "finding total")
@@ -124,7 +126,7 @@ def build_archived_review_session(package_filename: str, data: bytes) -> dict[st
     rows_reviewed = _int_value(full.get("rows_reviewed", 0), "rows reviewed")
     affected_percent = round((len(affected) / rows_reviewed * 100), 2) if rows_reviewed else 0.0
     review_metrics = {
-        "status": "Archived review snapshot — no estimate re-audit performed",
+        "status": "Archived review snapshot — continued human review only; no estimate re-audit performed",
         "finding_count": len(findings),
         "affected_rows": len(affected),
         "affected_row_percent": affected_percent,
@@ -140,7 +142,9 @@ def build_archived_review_session(package_filename: str, data: bytes) -> dict[st
         "review_metrics": review_metrics,
         "score_explanation": (
             "Archived review snapshot compatibility score reconstructed only from the stored finding severities using the legacy weighting formula. "
-            "The original estimate bytes are absent and deterministic audit rules were not rerun."
+            "The original estimate/reference bytes are absent and deterministic audit/reference rules were not rerun. "
+            f"Archived source package: {source_package_filename}; SHA-256: {package_sha256}. "
+            "This package identity describes the archived snapshot only and does not prove that any current estimate or reference file still matches it."
         ),
     }
 
@@ -169,8 +173,8 @@ def build_archived_review_session(package_filename: str, data: bytes) -> dict[st
         "reference_sources": list(reference_sources),
         "reference_metadata": metadata,
         "archived_snapshot_origin": {
-            "package_filename": str(package_filename or "review-package.zip"),
-            "package_sha256": hashlib.sha256(payload).hexdigest(),
+            "package_filename": source_package_filename,
+            "package_sha256": package_sha256,
             "package_format": str(verified.get("package_format", "")),
             "package_version": int(verified.get("package_version", 0)),
             "integrity_version": int(verified.get("integrity_version", 0)),
