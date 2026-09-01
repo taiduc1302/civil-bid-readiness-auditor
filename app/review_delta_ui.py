@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import server_legacy as _server
 from review_delta import compare_review_packages
+from review_delta_export import build_review_delta_export
 
 MAX_DETAIL_ROWS = 200
 
@@ -102,18 +103,19 @@ def delta_page_body(result: dict[str, Any] | None = None, error: str = "") -> st
 <div style='overflow:auto'><table><thead><tr><th>Change</th><th>Type</th><th>Sheet</th><th>Row</th><th>Code</th><th>Fields</th><th>Status</th></tr></thead><tbody>{reference_rows}</tbody></table></div>
 <h3>Reference snapshot metadata drift</h3><p>Added {mc['ADDED']} | Removed {mc['REMOVED']} | Changed {mc['CHANGED']} | Unchanged {mc['UNCHANGED']}</p>
 <div style='overflow:auto'><table><thead><tr><th>Change</th><th>Role</th><th>Fields</th><th>Earlier revision</th><th>Later revision</th></tr></thead><tbody>{metadata_rows}</tbody></table></div>
-<p class='visually-helpful'>Detail tables show at most {MAX_DETAIL_ROWS} changed rows per section. Comparison runs in memory and creates no review session.</p>
+<p class='visually-helpful'>Detail tables show at most {MAX_DETAIL_ROWS} changed rows per section. Comparison runs in memory and creates no review session. The portable evidence export re-verifies the two package uploads again and remains evidence-drift-only.</p>
 </section>"""
 
     return f"""{alert}{output}
 <section class='card'>
 <h2>Compare two review snapshots</h2>
-<p>Choose an earlier and later review-package ZIP. Both packages are independently re-verified before comparison. Review Delta compares archived evidence only; it does not rerun estimate rules.</p>
+<p>Choose an earlier and later review-package ZIP. Both packages are independently re-verified before comparison or export. Review Delta compares archived evidence only; it does not rerun estimate rules.</p>
 <form action='/compare-review-packages' method='post' enctype='multipart/form-data'>
 <p><label>Earlier review-package ZIP <input type='file' name='earlier_package' accept='.zip,application/zip' required></label></p>
 <p><label>Later review-package ZIP <input type='file' name='later_package' accept='.zip,application/zip' required></label></p>
-<p><button type='submit'>Compare review snapshots</button> <a href='/'>Back to home</a></p>
+<p><button type='submit'>Compare review snapshots</button> <button type='submit' formaction='/export-review-delta'>Download evidence bundle</button> <a href='/'>Back to home</a></p>
 </form>
+<p class='visually-helpful'>The evidence bundle is a separate deterministic Review Delta export, not a review package and not a restorable audit session.</p>
 </section>"""
 
 
@@ -138,13 +140,23 @@ def install_review_delta_ui() -> None:
         original_get(self)
 
     def do_post(self: _server.BaseHTTPRequestHandler) -> None:
-        if urlparse(self.path).path != "/compare-review-packages":
+        path = urlparse(self.path).path
+        if path not in ("/compare-review-packages", "/export-review-delta"):
             original_post(self)
             return
         try:
             message = _server._multipart_message(self)
             earlier, later = _read_pair(message)
             result = compare_review_packages(earlier[0], earlier[1], later[0], later[1])
+            if path == "/export-review-delta":
+                content, filename = build_review_delta_export(result)
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
             self.send_html(_server.page("Review Delta", delta_page_body(result=result)))
         except (_server.InputError, ValueError) as exc:
             self.send_html(_server.page("Review Delta", delta_page_body(error=str(exc))), HTTPStatus.BAD_REQUEST)
