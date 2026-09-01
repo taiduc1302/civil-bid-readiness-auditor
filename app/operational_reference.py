@@ -5,6 +5,9 @@ calculates production, or treats historical cost/rate data as current authority.
 """
 from __future__ import annotations
 
+import csv
+import hashlib
+import io
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
@@ -20,6 +23,12 @@ OPERATIONAL_STATUSES = (
     "NO_MATCH",
     "NOT_CHECKED",
 )
+MAX_OPERATIONAL_REFERENCE_BYTES = 5 * 1024 * 1024
+_OPERATIONAL_HEADERS = {
+    "activity_code": ("activity_code", "activity code", "activity", "activity id"),
+    "crew_code": ("crew_code", "crew code", "crew", "crew id"),
+    "production_rate": ("production_rate", "production rate", "prod rate", "prod. rate"),
+}
 
 
 def _text(value: Any) -> str:
@@ -37,8 +46,86 @@ def _finite_decimal(value: Any) -> Decimal | None:
     return result if result.is_finite() else None
 
 
+def _header_map(headers: Iterable[str]) -> dict[str, str]:
+    lookup = {normalize_name(header): str(header) for header in headers if str(header).strip()}
+    mapped: dict[str, str] = {}
+    for field, candidates in _OPERATIONAL_HEADERS.items():
+        for candidate in candidates:
+            source = lookup.get(normalize_name(candidate))
+            if source is not None:
+                mapped[field] = source
+                break
+    return mapped
+
+
+def parse_operational_reference_csv(data: bytes) -> tuple[list[dict[str, str]], tuple[str, ...]]:
+    """Parse explicit Activity/Crew/Production reference evidence without inference.
+
+    Activity Code is required. At least one Crew Code or Production Rate column is
+    required, and at least one row must contain an explicit operational value.
+    Extra columns, including historical cost/rate fields, are ignored.
+    """
+    payload = bytes(data)
+    if not payload.strip():
+        raise ValueError("Operational reference CSV is blank.")
+    if len(payload) > MAX_OPERATIONAL_REFERENCE_BYTES:
+        raise ValueError("Operational reference CSV exceeds the 5 MB local processing limit.")
+    try:
+        text = payload.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Operational reference CSV must be UTF-8 encoded.") from exc
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        headers = [str(header or "").strip() for header in (reader.fieldnames or [])]
+        mapped = _header_map(headers)
+        if "activity_code" not in mapped:
+            raise ValueError("Operational reference CSV is missing required Activity Code column.")
+        available = tuple(field for field in ("crew_code", "production_rate") if field in mapped)
+        if not available:
+            raise ValueError("Operational reference CSV must include Crew Code and/or Production Rate.")
+        rows: list[dict[str, str]] = []
+        explicit_operational_value = False
+        for source in reader:
+            row = {
+                "activity_code": _text(source.get(mapped["activity_code"], "")),
+                "crew_code": _text(source.get(mapped.get("crew_code", ""), "")) if "crew_code" in mapped else "",
+                "production_rate": _text(source.get(mapped.get("production_rate", ""), "")) if "production_rate" in mapped else "",
+            }
+            if row["crew_code"] or row["production_rate"]:
+                explicit_operational_value = True
+            rows.append(row)
+    except csv.Error as exc:
+        raise ValueError(f"Operational reference CSV could not be read: {exc}") from exc
+    if not rows:
+        raise ValueError("Operational reference CSV has a header but no reference rows.")
+    if not any(row["activity_code"] for row in rows):
+        raise ValueError("Operational reference contains no Activity Codes.")
+    if not explicit_operational_value:
+        raise ValueError("Operational reference contains no explicit Crew Code or Production Rate values.")
+    return rows, available
+
+
+def build_operational_reference_metadata(filename: str, data: bytes, revision: str = "") -> dict[str, Any]:
+    """Record immutable upload evidence without claiming reference authority."""
+    name = _text(filename)
+    if not name:
+        raise ValueError("Operational reference filename is required.")
+    label = _text(revision)
+    if len(label) > 200:
+        raise ValueError("Operational reference revision/label must be 200 characters or fewer.")
+    payload = bytes(data)
+    return {
+        "role": "operational_activity",
+        "filename": name,
+        "revision": label,
+        "size_bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "authority_status": "NOT_ESTABLISHED_BY_APP",
+    }
+
+
 def build_activity_operational_index(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, str]]:
-    """Build an exact Activity Code index from an explicitly approved reference snapshot."""
+    """Build an exact Activity Code index from an explicitly supplied reference snapshot."""
     index: dict[str, dict[str, str]] = {}
     for row in rows:
         activity_code = _text(row.get("activity_code"))
@@ -165,5 +252,5 @@ def validate_operational_export_rows(
             row.get("production_rate", row.get("Production Rate", "")),
             reference_index,
         )
-        results.append({"source_row": source_row, **result})
+        results.append({"sheet": str(row.get("__sheet", "")), "source_row": source_row, **result})
     return results
