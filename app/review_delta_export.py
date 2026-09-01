@@ -1,11 +1,13 @@
-"""Deterministic portable export for an already-verified Review Delta result."""
+"""Deterministic portable export and strict verification for Review Delta evidence."""
 from __future__ import annotations
 
 import csv
 import hashlib
 import io
 import json
+import re
 import zipfile
+from pathlib import PurePosixPath
 from typing import Any, Iterable
 
 DELTA_EXPORT_FORMAT = "civil-estimate-review-delta-export"
@@ -13,6 +15,18 @@ DELTA_EXPORT_VERSION = 1
 DELTA_EXPORT_INTEGRITY_FORMAT = "civil-estimate-review-delta-export-integrity"
 DELTA_EXPORT_INTEGRITY_VERSION = 1
 _FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
+_REQUIRED_MEMBERS = {
+    "README.txt",
+    "finding_changes.csv",
+    "integrity.json",
+    "manifest.json",
+    "reference_changes.csv",
+    "reference_metadata_changes.csv",
+    "review_delta.json",
+}
+MAX_DELTA_EXPORT_BYTES = 50 * 1024 * 1024
+MAX_DELTA_MEMBER_BYTES = 25 * 1024 * 1024
+MAX_DELTA_TOTAL_UNCOMPRESSED_BYTES = 75 * 1024 * 1024
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -138,6 +152,14 @@ def _metadata_csv(result: dict[str, Any]) -> bytes:
     return _write_csv(fields, rows)
 
 
+def _readme_bytes() -> bytes:
+    return (
+        "Civil Estimate Review Auditor - Review Delta evidence export\n\n"
+        "This bundle reports archived evidence drift only. It does not establish improvement, correctness, estimator approval, bid readiness, reference authority, or HeavyBid import validity.\n"
+        "The original review-package, estimate, and reference bytes are not embedded. Operational Crew/Production session-only evidence is not part of review-package v1 and is not invented into this export.\n"
+    ).encode("utf-8")
+
+
 def delta_export_manifest(result: dict[str, Any]) -> dict[str, Any]:
     """Return the small portable-export contract without duplicating full evidence rows."""
     return {
@@ -185,6 +207,21 @@ def delta_export_integrity(members: dict[str, bytes]) -> dict[str, Any]:
     }
 
 
+def _validate_comparison_result(result: dict[str, Any]) -> None:
+    if result.get("comparison_format") != "civil-estimate-review-delta" or result.get("comparison_version") != 1:
+        raise ValueError("Unsupported Review Delta comparison result.")
+    for field in ("earlier", "later", "finding_counts", "reference_counts", "reference_metadata_counts"):
+        if not isinstance(result.get(field), dict):
+            raise ValueError(f"Review Delta comparison field must be an object: {field}")
+    for field in ("finding_changes", "reference_changes", "reference_metadata_changes"):
+        value = result.get(field)
+        if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+            raise ValueError(f"Review Delta comparison field must be a list of objects: {field}")
+    for flag in ("session_created", "re_audit_performed", "correctness_inferred", "readiness_inferred", "heavybid_import_validated"):
+        if result.get(flag) is not False:
+            raise ValueError(f"Review Delta export requires {flag}=false.")
+
+
 def _write_member(book: zipfile.ZipFile, name: str, data: bytes) -> None:
     info = zipfile.ZipInfo(name, date_time=_FIXED_ZIP_TIME)
     info.compress_type = zipfile.ZIP_DEFLATED
@@ -194,23 +231,14 @@ def _write_member(book: zipfile.ZipFile, name: str, data: bytes) -> None:
 
 def build_review_delta_export(result: dict[str, Any]) -> tuple[bytes, str]:
     """Create byte-deterministic portable Review Delta evidence from one comparison result."""
-    if result.get("comparison_format") != "civil-estimate-review-delta" or result.get("comparison_version") != 1:
-        raise ValueError("Unsupported Review Delta comparison result.")
-    for flag in ("session_created", "re_audit_performed", "correctness_inferred", "readiness_inferred", "heavybid_import_validated"):
-        if result.get(flag) is not False:
-            raise ValueError(f"Review Delta export requires {flag}=false.")
-
+    _validate_comparison_result(result)
     members: dict[str, bytes] = {
         "manifest.json": _json_bytes(delta_export_manifest(result)),
         "review_delta.json": _json_bytes(result),
         "finding_changes.csv": _finding_csv(result),
         "reference_changes.csv": _reference_csv(result),
         "reference_metadata_changes.csv": _metadata_csv(result),
-        "README.txt": (
-            "Civil Estimate Review Auditor - Review Delta evidence export\n\n"
-            "This bundle reports archived evidence drift only. It does not establish improvement, correctness, estimator approval, bid readiness, reference authority, or HeavyBid import validity.\n"
-            "The original review-package, estimate, and reference bytes are not embedded. Operational Crew/Production session-only evidence is not part of review-package v1 and is not invented into this export.\n"
-        ).encode("utf-8"),
+        "README.txt": _readme_bytes(),
     }
     members["integrity.json"] = _json_bytes(delta_export_integrity(members))
 
@@ -219,3 +247,143 @@ def build_review_delta_export(result: dict[str, Any]) -> tuple[bytes, str]:
         for name in sorted(members):
             _write_member(book, name, members[name])
     return output.getvalue(), "review_delta_evidence_v1.zip"
+
+
+def _validate_member_name(name: str) -> None:
+    if not name or "\\" in name:
+        raise ValueError("Review Delta export contains an invalid member name.")
+    path = PurePosixPath(name)
+    if path.is_absolute() or ".." in path.parts or len(path.parts) != 1:
+        raise ValueError(f"Review Delta export contains an unsafe member path: {name}")
+
+
+def _read_member(book: zipfile.ZipFile, name: str) -> bytes:
+    try:
+        return book.read(name)
+    except (zipfile.BadZipFile, RuntimeError, KeyError, NotImplementedError, OSError) as exc:
+        raise ValueError(f"Review Delta export member could not be read safely: {name}") from exc
+
+
+def _read_json(book: zipfile.ZipFile, name: str) -> dict[str, Any]:
+    try:
+        value = json.loads(_read_member(book, name).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Review Delta export contains invalid {name}.") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"Review Delta export {name} must contain a JSON object.")
+    return value
+
+
+def verify_review_delta_export(data: bytes) -> dict[str, Any]:
+    """Verify ZIP structure, hashes, and deterministic semantic agreement in memory."""
+    payload = bytes(data)
+    if not payload:
+        raise ValueError("Review Delta export is blank.")
+    if len(payload) > MAX_DELTA_EXPORT_BYTES:
+        raise ValueError("Review Delta export exceeds the 50 MB verification limit.")
+    try:
+        book = zipfile.ZipFile(io.BytesIO(payload), "r")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Review Delta export is not a readable ZIP archive.") from exc
+
+    with book:
+        infos = book.infolist()
+        for info in infos:
+            if info.is_dir():
+                raise ValueError(f"Review Delta export contains unsupported directory entry: {info.filename}")
+            _validate_member_name(info.filename)
+        names = [info.filename for info in infos]
+        if len(names) != len(set(names)):
+            raise ValueError("Review Delta export contains duplicate member names.")
+        member_set = set(names)
+        missing = sorted(_REQUIRED_MEMBERS - member_set)
+        if missing:
+            raise ValueError(f"Review Delta export is missing required members: {', '.join(missing)}")
+        unexpected = sorted(member_set - _REQUIRED_MEMBERS)
+        if unexpected:
+            raise ValueError(f"Review Delta export contains unexpected members: {', '.join(unexpected)}")
+
+        total_uncompressed = 0
+        for info in infos:
+            if info.file_size > MAX_DELTA_MEMBER_BYTES:
+                raise ValueError(f"Review Delta export member exceeds the 25 MB verification limit: {info.filename}")
+            total_uncompressed += info.file_size
+        if total_uncompressed > MAX_DELTA_TOTAL_UNCOMPRESSED_BYTES:
+            raise ValueError("Review Delta export exceeds the 75 MB uncompressed verification limit.")
+
+        integrity = _read_json(book, "integrity.json")
+        if integrity.get("integrity_format") != DELTA_EXPORT_INTEGRITY_FORMAT or integrity.get("integrity_version") != DELTA_EXPORT_INTEGRITY_VERSION:
+            raise ValueError("Review Delta export integrity contract is unsupported.")
+        if integrity.get("export_format") != DELTA_EXPORT_FORMAT or integrity.get("export_version") != DELTA_EXPORT_VERSION:
+            raise ValueError("Review Delta export integrity metadata has unsupported export identity.")
+        expected = integrity.get("members")
+        if not isinstance(expected, dict):
+            raise ValueError("Review Delta export integrity metadata is missing member checksums.")
+        actual_names = member_set - {"integrity.json"}
+        if set(expected) != actual_names:
+            raise ValueError("Review Delta export integrity member list does not match archive contents.")
+        for name in sorted(actual_names):
+            entry = expected.get(name)
+            if not isinstance(entry, dict):
+                raise ValueError(f"Review Delta export integrity entry is invalid: {name}")
+            expected_sha = str(entry.get("sha256", ""))
+            expected_size = entry.get("size_bytes")
+            if not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
+                raise ValueError(f"Review Delta export integrity SHA-256 is invalid: {name}")
+            if not isinstance(expected_size, int) or expected_size < 0:
+                raise ValueError(f"Review Delta export integrity size is invalid: {name}")
+            member_data = _read_member(book, name)
+            if len(member_data) != expected_size:
+                raise ValueError(f"Review Delta export member size does not match integrity metadata: {name}")
+            if _sha256(member_data) != expected_sha:
+                raise ValueError(f"Review Delta export member SHA-256 does not match integrity metadata: {name}")
+
+        manifest = _read_json(book, "manifest.json")
+        comparison = _read_json(book, "review_delta.json")
+        _validate_comparison_result(comparison)
+        if manifest.get("export_format") != DELTA_EXPORT_FORMAT or manifest.get("export_version") != DELTA_EXPORT_VERSION:
+            raise ValueError("Review Delta export manifest identity is unsupported.")
+        expected_manifest = delta_export_manifest(comparison)
+        if manifest != expected_manifest:
+            raise ValueError("Review Delta export manifest does not match the full comparison evidence.")
+
+        try:
+            expected_csvs = {
+                "finding_changes.csv": _finding_csv(comparison),
+                "reference_changes.csv": _reference_csv(comparison),
+                "reference_metadata_changes.csv": _metadata_csv(comparison),
+            }
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError("Review Delta export contains malformed comparison evidence.") from exc
+        for name, expected_bytes in expected_csvs.items():
+            if _read_member(book, name) != expected_bytes:
+                raise ValueError(f"Review Delta export {name} does not match the full comparison evidence.")
+        if _read_member(book, "README.txt") != _readme_bytes():
+            raise ValueError("Review Delta export README does not match the supported safety contract.")
+
+    changed_findings = [item for item in comparison["finding_changes"] if item.get("change_type") != "UNCHANGED"][:100]
+    changed_references = [item for item in comparison["reference_changes"] if item.get("change_type") != "UNCHANGED"][:100]
+    changed_metadata = [item for item in comparison["reference_metadata_changes"] if item.get("change_type") != "UNCHANGED"][:20]
+    return {
+        "valid": True,
+        "export_format": DELTA_EXPORT_FORMAT,
+        "export_version": DELTA_EXPORT_VERSION,
+        "comparison_format": comparison["comparison_format"],
+        "comparison_version": comparison["comparison_version"],
+        "members_verified": len(actual_names),
+        "earlier": dict(comparison["earlier"]),
+        "later": dict(comparison["later"]),
+        "finding_counts": dict(comparison["finding_counts"]),
+        "reference_counts": dict(comparison["reference_counts"]),
+        "reference_metadata_counts": dict(comparison["reference_metadata_counts"]),
+        "preview": {
+            "finding_changes": changed_findings,
+            "reference_changes": changed_references,
+            "reference_metadata_changes": changed_metadata,
+        },
+        "session_created": False,
+        "re_audit_performed": False,
+        "correctness_inferred": False,
+        "readiness_inferred": False,
+        "heavybid_import_validated": False,
+    }
