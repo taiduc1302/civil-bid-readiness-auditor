@@ -11,6 +11,7 @@ from collections.abc import Callable
 from accessibility import install_accessibility_semantics
 from archived_review_ui import install_archived_review_ui
 from bulk_review_ui import install_bulk_review_ui
+from operational_reference_ui import install_operational_reference_ui
 from review_delta_ui import install_review_delta_ui
 from review_view_context import install_review_view_context
 
@@ -20,6 +21,7 @@ _PUBLIC_FEATURES: tuple[tuple[str, Installer], ...] = (
     ("accessibility_semantics", install_accessibility_semantics),
     ("bulk_review_ui", install_bulk_review_ui),
     ("review_view_context", install_review_view_context),
+    ("operational_reference_ui", install_operational_reference_ui),
     ("archived_review_ui", install_archived_review_ui),
     ("review_delta_ui", install_review_delta_ui),
 )
