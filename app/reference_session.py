@@ -8,6 +8,13 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from audit_engine import InputError
+from operational_reference import (
+    OPERATIONAL_STATUSES,
+    build_activity_operational_index,
+    build_operational_reference_metadata,
+    parse_operational_reference_csv,
+    validate_operational_export_rows,
+)
 from reference_metadata import build_reference_metadata
 from reference_validation import (
     REFERENCE_STATUSES,
@@ -29,17 +36,21 @@ from reference_views import (
 _FILE_FIELDS = {
     "activity_reference": "activity",
     "resource_reference": "resource",
+    "operational_reference": "operational_activity",
 }
 _REVISION_FIELDS = {
     "activity_revision": "activity",
     "resource_revision": "resource",
+    "operational_revision": "operational_activity",
 }
+_REGULAR_FILE_FIELDS = ("activity_reference", "resource_reference")
+_OPERATIONAL_FIELDS = ("crew_code", "production_rate")
 
 
 def parse_reference_multipart(message: Any) -> tuple[dict[str, tuple[str, bytes]], dict[str, str]]:
     """Read reference files plus optional revision labels from one multipart message."""
     uploads: dict[str, tuple[str, bytes]] = {}
-    revisions: dict[str, str] = {"activity": "", "resource": ""}
+    revisions: dict[str, str] = {"activity": "", "resource": "", "operational_activity": ""}
     for part in message.iter_parts():
         if part.get_content_disposition() != "form-data":
             continue
@@ -67,7 +78,8 @@ def validate_reference_submission(
     uploads: dict[str, tuple[str, bytes]],
     revisions: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Validate an entire reference rerun before returning an atomic session update."""
+    """Validate a regular Activity/Resource rerun before returning an atomic update."""
+    uploads = {key: value for key, value in uploads.items() if key in _REGULAR_FILE_FIELDS}
     if not uploads:
         raise InputError("Choose at least one Activity or Resource reference CSV.")
     if "result" not in session or "audit_sheets" not in session:
@@ -105,6 +117,62 @@ def validate_reference_submission(
         "reference_results": results,
         "reference_sources": sources,
         "reference_metadata": metadata,
+    }
+
+
+def _source_operational_fields(session: dict[str, Any]) -> tuple[str, ...]:
+    fields: set[str] = set()
+    for mapping in session.get("mappings", {}).values():
+        if not mapping.get("activity"):
+            continue
+        fields.update(field for field in _OPERATIONAL_FIELDS if mapping.get(field))
+    return tuple(field for field in _OPERATIONAL_FIELDS if field in fields)
+
+
+def validate_operational_submission(
+    session: dict[str, Any],
+    upload: tuple[str, bytes],
+    revision: str = "",
+) -> dict[str, Any]:
+    """Validate explicit Crew/Production evidence without changing package-v1 evidence."""
+    if "result" not in session or "audit_sheets" not in session:
+        raise InputError("Operational reference comparison requires a current source-backed audit session.")
+    name, data = upload
+    if Path(name).suffix.casefold() != ".csv":
+        raise InputError("Operational Activity reference must be a CSV file.")
+
+    mappings = session.get("mappings", {})
+    source_fields = set(_source_operational_fields(session))
+    if not source_fields:
+        raise InputError(
+            "Operational reference comparison requires Activity plus Crew Code and/or Production Rate to be explicitly mapped in the audited estimate."
+        )
+
+    reference_rows, reference_fields = parse_operational_reference_csv(data)
+    overlap = source_fields.intersection(reference_fields)
+    if not overlap:
+        raise InputError(
+            "The operational reference has no Crew Code / Production Rate field that overlaps the explicitly mapped source fields."
+        )
+
+    eligible_sheets = {
+        sheet
+        for sheet, mapping in mappings.items()
+        if mapping.get("activity") and any(mapping.get(field) for field in overlap)
+    }
+    canonical_rows = canonicalize_export_rows(session["audit_sheets"], mappings)
+    eligible_rows = [row for row in canonical_rows if row.get("__sheet") in eligible_sheets]
+    if not any(str(row.get(field, "") or "").strip() for row in eligible_rows for field in overlap):
+        raise InputError("The mapped source rows contain no explicit Crew Code or Production Rate values for the comparable field(s).")
+    if not any(str(row.get(field, "") or "").strip() for row in reference_rows for field in overlap):
+        raise InputError("The operational reference contains no explicit values for the source-mapped comparable field(s).")
+
+    reference_index = build_activity_operational_index(reference_rows)
+    results = validate_operational_export_rows(eligible_rows, reference_index)
+    return {
+        "operational_reference_results": results,
+        "operational_reference_metadata": build_operational_reference_metadata(name, data, revision),
+        "operational_reference_fields": list(field for field in _OPERATIONAL_FIELDS if field in overlap),
     }
 
 
@@ -225,13 +293,68 @@ def _reference_rows(groups: list[tuple[str, list[dict[str, Any]]]]) -> str:
     return "".join(parts) or "<tr><td colspan='8'>No reference checks match the current view.</td></tr>"
 
 
+def _operational_panel(token: str, session: dict[str, Any]) -> str:
+    if "audit_sheets" not in session:
+        return ""
+    source_fields = _source_operational_fields(session)
+    if not source_fields:
+        return (
+            "<section class='card' id='operational-references'><h2>Operational Activity evidence</h2>"
+            "<p>Not available for this audit. To compare governed Crew Code / Production Rate evidence, the source audit must explicitly map Activity plus Crew Code and/or Production Rate on the same included sheet. No crew or production value is inferred.</p>"
+            "</section>"
+        )
+
+    action = f"/references?token={quote(token, safe='')}"
+    source_label = ", ".join("Crew Code" if field == "crew_code" else "Production Rate" for field in source_fields)
+    form = f"""<form action='{action}' method='post' enctype='multipart/form-data'>
+<p><label>Operational Activity reference CSV <input type='file' name='operational_reference' accept='.csv' required></label><br>
+<label>Operational reference revision / label <input type='text' name='operational_revision' maxlength='200' placeholder='Optional; not inferred'></label></p>
+<p><button type='submit'>Compare explicit operational evidence</button></p></form>"""
+    results = session.get("operational_reference_results")
+    metadata = session.get("operational_reference_metadata")
+    if not results:
+        return f"""<section class='card' id='operational-references'><h2>Operational Activity evidence</h2>
+<p>Optional, evidence-only. This audit explicitly maps <strong>{html.escape(source_label)}</strong> with Activity. Supply a governed Activity CSV containing <code>activity_code</code> plus the corresponding <code>crew_code</code> and/or <code>production_rate</code>. Only fields explicitly present on both sides are compared.</p>
+<p>No crew design, production calculation, replacement value, pricing authority, estimator approval, bid-readiness judgement, or HeavyBid import validation is performed.</p>
+<div class='notice'><strong>Package boundary:</strong> operational evidence is temporary-session UI evidence only. It is not included in review-package v1, archived continuation, Review Delta, or the existing reference-check CSV.</div>
+{form}</section>"""
+
+    counts = Counter(item.get("status", "") for item in results)
+    summary = " | ".join(f"{status}: {counts.get(status, 0)}" for status in OPERATIONAL_STATUSES)
+    fields = session.get("operational_reference_fields", [])
+    field_label = ", ".join("Crew Code" if field == "crew_code" else "Production Rate" for field in fields) or "none"
+    rows = "".join(
+        "<tr>"
+        f"<td class='{html.escape(str(item.get('status', '')))}'>{html.escape(str(item.get('status', '')))}</td>"
+        f"<td>{html.escape(str(item.get('sheet', '')))}</td>"
+        f"<td>{html.escape(str(item.get('source_row', '')))}</td>"
+        f"<td>{html.escape(str(item.get('activity_code', '')))}</td>"
+        f"<td>{html.escape(str(item.get('reference_activity_code', '')))}</td>"
+        f"<td>{html.escape(str(item.get('crew_code', '')))}</td>"
+        f"<td>{html.escape(str(item.get('reference_crew_code', '')))}</td>"
+        f"<td>{html.escape(str(item.get('production_rate', '')))}</td>"
+        f"<td>{html.escape(str(item.get('reference_production_rate', '')))}</td>"
+        f"<td>{html.escape(str(item.get('message', '')))}</td>"
+        "</tr>"
+        for item in results
+    ) or "<tr><td colspan='10'>No operational rows were comparable.</td></tr>"
+    metadata_html = _metadata_table([metadata] if isinstance(metadata, dict) else [])
+    return f"""<section class='card' id='operational-references'><h2>Operational Activity evidence</h2>
+<p><strong>Compared explicit fields:</strong> {html.escape(field_label)}<br><strong>Results:</strong> {html.escape(summary)}</p>
+<p>Statuses describe row-linked evidence only. A match does not establish that the reference is approved/current, that the crew or production value is correct, or that the estimate is ready for HeavyBid import.</p>
+{metadata_html}
+<div class='notice'><strong>Package boundary:</strong> operational evidence is temporary-session UI evidence only. It is not included in review-package v1, archived continuation, Review Delta, or the existing reference-check CSV.</div>
+<div style='overflow:auto'><table><caption>Explicit Crew Code / Production Rate evidence</caption><thead><tr><th>Status</th><th>Sheet</th><th>Row</th><th>Activity</th><th>Reference activity</th><th>Source crew</th><th>Reference crew</th><th>Source production</th><th>Reference production</th><th>Message</th></tr></thead><tbody>{rows}</tbody></table></div>
+<h3>Replace / rerun operational reference</h3>{form}</section>"""
+
+
 def reference_panel(
     token: str,
     session: dict[str, Any],
     view: dict[str, str] | None = None,
     preserve: dict[str, str] | None = None,
 ) -> str:
-    """Render reference upload/results UI with explicit evidence metadata and presentation-only views."""
+    """Render code/unit references plus separate session-only operational evidence."""
     action = f"/references?token={quote(token, safe='')}"
     results = session.get("reference_results")
     metadata = session.get("reference_metadata", []) if results else []
@@ -243,13 +366,14 @@ def reference_panel(
 <p><button type='submit'>Validate against supplied references</button></p></form>"""
     metadata_html = _metadata_table(metadata)
     if not results:
-        return (
+        regular_html = (
             "<section class='card'><h2>Governed reference validation</h2>"
             "<p>Optional. Upload an explicitly selected Activity and/or Resource reference CSV. Required columns are "
             "<code>activity_code,unit</code> or <code>resource_code,unit</code>. Revision/label is recorded exactly as supplied and may be blank. "
             "The app does not infer reference authority, replacement codes, or unit conversions.</p>"
             f"{upload_form}</section>"
         )
+        return regular_html + _operational_panel(token, session)
 
     view = {
         "ref_status": str((view or {}).get("ref_status", "Exceptions") or "Exceptions"),
@@ -273,7 +397,7 @@ def reference_panel(
     summary = " | ".join(f"{status}: {counts.get(status, 0)}" for status in REFERENCE_STATUSES)
     rows = _reference_rows(groups)
     controls = _reference_controls(token, results, view, preserve, len(filtered))
-    return f"""<section class='card'><h2>Governed reference validation</h2>
+    regular_html = f"""<section class='card'><h2>Governed reference validation</h2>
 <p><strong>Results:</strong> {html.escape(summary)}</p>
 <p>Checks use only the explicitly uploaded reference files for this temporary session. A match and a recorded hash do not establish authority or HeavyBid import approval.</p>
 {metadata_html}
@@ -281,3 +405,4 @@ def reference_panel(
 <p><a class='button' href='/export/references?token={html.escape(token, quote=True)}'>Download reference checks CSV</a></p>
 <div style='overflow:auto'><table><caption>Visible governed reference checks</caption><thead><tr><th>Status</th><th>Type</th><th>Sheet</th><th>Row</th><th>Source code</th><th>Reference code</th><th>Reference unit</th><th>Message</th></tr></thead><tbody>{rows}</tbody></table></div>
 <h3>Replace / rerun references</h3>{upload_form}</section>"""
+    return regular_html + _operational_panel(token, session)

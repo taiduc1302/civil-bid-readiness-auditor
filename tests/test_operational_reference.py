@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sys
 import unittest
 from pathlib import Path
@@ -9,6 +10,8 @@ sys.path.insert(0, str(ROOT / "app"))
 
 from operational_reference import (
     build_activity_operational_index,
+    build_operational_reference_metadata,
+    parse_operational_reference_csv,
     validate_operational_export_rows,
     validate_operational_fields,
 )
@@ -69,12 +72,52 @@ class OperationalReferenceTests(unittest.TestCase):
         self.assertEqual(set(index["stm300"]), {"activity_code", "crew_code", "production_rate"})
 
     def test_row_linkage_is_preserved_and_source_not_mutated(self):
-        rows = [{"Activity Code": "EXC", "Crew Code": "CR-EARTH", "Production Rate": "12", "__source_row": "42"}]
+        rows = [{
+            "Activity Code": "EXC",
+            "Crew Code": "CR-EARTH",
+            "Production Rate": "12",
+            "__sheet": "Resources",
+            "__source_row": "42",
+        }]
         original = dict(rows[0])
         results = validate_operational_export_rows(rows, self.index())
         self.assertEqual(rows[0], original)
+        self.assertEqual(results[0]["sheet"], "Resources")
         self.assertEqual(results[0]["source_row"], 42)
         self.assertEqual(results[0]["status"], "MATCH")
+
+    def test_operational_csv_parser_is_explicit_and_ignores_cost(self):
+        payload = (
+            "Activity Code,Crew Code,Prod Rate,Historical Cost\n"
+            "EXC,CR-EARTH,12,999\n"
+            "STM300,CR-PIPE,5,123\n"
+        ).encode()
+        rows, fields = parse_operational_reference_csv(payload)
+        self.assertEqual(fields, ("crew_code", "production_rate"))
+        self.assertEqual(rows[0], {
+            "activity_code": "EXC",
+            "crew_code": "CR-EARTH",
+            "production_rate": "12",
+        })
+        self.assertNotIn("Historical Cost", rows[0])
+
+    def test_operational_csv_requires_activity_and_explicit_operational_field(self):
+        with self.assertRaisesRegex(ValueError, "Activity Code"):
+            parse_operational_reference_csv(b"Crew Code,Production Rate\nCR-X,1\n")
+        with self.assertRaisesRegex(ValueError, "Crew Code and/or Production Rate"):
+            parse_operational_reference_csv(b"Activity Code,Unit\nEXC,BCY\n")
+        with self.assertRaisesRegex(ValueError, "no explicit Crew Code or Production Rate"):
+            parse_operational_reference_csv(b"Activity Code,Crew Code\nEXC,\n")
+
+    def test_operational_metadata_records_bytes_without_authority_claim(self):
+        payload = b"activity_code,crew_code\nEXC,CR-EARTH\n"
+        metadata = build_operational_reference_metadata("ops.csv", payload, "Rev B")
+        self.assertEqual(metadata["role"], "operational_activity")
+        self.assertEqual(metadata["filename"], "ops.csv")
+        self.assertEqual(metadata["revision"], "Rev B")
+        self.assertEqual(metadata["size_bytes"], len(payload))
+        self.assertEqual(metadata["sha256"], hashlib.sha256(payload).hexdigest())
+        self.assertEqual(metadata["authority_status"], "NOT_ESTABLISHED_BY_APP")
 
 
 if __name__ == "__main__":
