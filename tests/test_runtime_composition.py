@@ -42,6 +42,7 @@ class RuntimeCompositionUnitTests(unittest.TestCase):
                 "operational_reference_ui",
                 "archived_review_ui",
                 "review_delta_ui",
+                "review_delta_verification_ui",
             ),
         )
 
@@ -149,6 +150,7 @@ class RuntimeCompositionHttpTests(unittest.TestCase):
         self.assertEqual(home.count(b"/guide"), 1)
         self.assertEqual(home.count(b"/verify-package"), 1)
         self.assertEqual(home.count(b"/compare-review-packages"), 1)
+        self.assertEqual(home.count(b"/verify-review-delta"), 1)
         self.assertIn(b"lang='en'", home)
         self.assertIn(b"id='main-content'", home)
 
@@ -157,6 +159,7 @@ class RuntimeCompositionHttpTests(unittest.TestCase):
             ("/verify-package", b"Review package verification"),
             ("/continue-review-package", b"Review-package re-open contract"),
             ("/compare-review-packages", b"Compare two review snapshots"),
+            ("/verify-review-delta", b"Verify Review Delta evidence bundle"),
         ):
             status, _, page = self.request("GET", path)
             self.assertEqual(status, 200)
