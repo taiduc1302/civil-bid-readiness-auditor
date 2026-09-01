@@ -105,7 +105,7 @@ class ReviewTimelineUiTests(unittest.TestCase):
         ab = self.delta("A.zip", a, "B-original.zip", b)
         bc = self.delta("B-renamed.zip", b, "C.zip", c)
         body, headers = self.multipart([
-            ("<script>bc</script>.zip", bc),
+            ("<evil&bc>.zip", bc),
             ("ab.delta.zip", ab),
         ])
         status, _, page = self.request("POST", "/review-timeline", body, headers)
@@ -116,10 +116,10 @@ class ReviewTimelineUiTests(unittest.TestCase):
         self.assertIn(b"exact package SHA-256 chain verified", page)
         self.assertIn(b"B-original.zip, B-renamed.zip", page)
         self.assertIn(b"ab.delta.zip", page)
-        self.assertIn(b"&lt;script&gt;bc&lt;/script&gt;.zip", page)
-        self.assertNotIn(b"<script>bc</script>.zip", page)
+        self.assertIn(b"&lt;evil&amp;bc&gt;.zip", page)
+        self.assertNotIn(b"<evil&bc>.zip", page)
         ab_position = page.find(b"ab.delta.zip")
-        bc_position = page.find(b"&lt;script&gt;bc&lt;/script&gt;.zip")
+        bc_position = page.find(b"&lt;evil&amp;bc&gt;.zip")
         self.assertGreater(ab_position, -1)
         self.assertGreater(bc_position, ab_position)
         self.assertIn(b"Transition chronology only", page)
