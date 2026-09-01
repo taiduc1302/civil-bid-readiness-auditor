@@ -37,9 +37,9 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 27. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
 28. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
 29. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
-30. Synthetic flat, hierarchical, HeavyBid-style, reference, operational-reference, review-UX, onboarding, package-integrity/semantic-preview, archived-review continuation, accessibility, bulk-review planning/application/UI, view-context, and control-gate fixtures with regression coverage.
+30. Synthetic flat, hierarchical, HeavyBid-style, reference, operational-reference, review-UX, onboarding, package-integrity/semantic-preview, archived-review continuation, accessibility, bulk-review planning/application/UI, view-context, Review Delta export, and control-gate fixtures with regression coverage.
 31. GitHub Actions test matrix on supported Python versions.
-32. Review Delta / Change Intelligence: an in-memory comparison of two independently verified review-package snapshots. Findings align by unique sheet/row/rule/field anchors so deterministic evidence changes are separated from human status/reason changes; governed reference checks and role-linked reference metadata are compared independently. Ambiguous duplicate anchors fail closed, no review session is created, no audit/reference logic is rerun, and no improvement/correctness/readiness judgement is inferred.
+32. Review Delta / Change Intelligence: an in-memory comparison of two independently verified review-package snapshots. Findings align by unique sheet/row/rule/field anchors so deterministic evidence changes are separated from human status/reason changes; governed reference checks and role-linked reference metadata are compared independently. Ambiguous duplicate anchors fail closed, no review session is created, no audit/reference logic is rerun, and no improvement/correctness/readiness judgement is inferred. The same pair can be re-verified and exported as a separate deterministic `civil-estimate-review-delta-export` v1 ZIP with full comparison JSON, spreadsheet-safe delta CSVs, lineage/count/safety manifest, README, and SHA-256/size integrity metadata; original package/source bytes and session-only operational evidence are not embedded.
 33. Temporary-session concurrency hardening for the local `ThreadingHTTPServer`: one in-memory lock per session token serializes state-sensitive read/validate/write operations while different tokens remain independently concurrent. Active lookup refreshes a 30-minute idle timeout, expiry skips a session while an active request holds its lock, and one-time bulk plans cannot be applied twice by concurrent requests.
 34. Explicit deterministic public-runtime composition: one startup composer invokes the idempotent accessibility, bulk-review, review-view-context, operational-reference, archived-review, and Review Delta feature installers. Content modules such as onboarding are side-effect free, and review-only renderer augmentation uses stable internal page identity rather than user-visible display-title strings.
 
@@ -48,7 +48,7 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 ### P1 — review UX hardening
 
 - archived human-review continuation is built; any future **true estimate/source restoration or re-audit** requires a separate package/version/migration/ownership contract that supplies and verifies the original source bytes rather than treating archived review evidence as current input;
-- extend Review Delta only with presentation/export conveniences that preserve its neutral evidence-drift boundary; do not convert it into an automatic quality trend score;
+- Review Delta comparison and portable evidence export are built; any future timeline/trend presentation must preserve neutral evidence-drift semantics and must not become an automatic quality score;
 - evaluate additional fictional first-run guidance only when it demonstrates already-built behavior rather than implying reference authority or automatic decisions;
 - keep bulk actions limited to explicit selections and preserve one-time preview/revalidation semantics; do not add select-all or implicit view-based scope.
 
@@ -74,7 +74,7 @@ The writer must:
 
 ## Deferred / not built
 
-Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, true source-file/session restoration or deterministic re-audit from a review package, portable-package operational Crew/Production evidence, direct HeavyBid database/API access, and production import automation.
+Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, true source-file/session restoration or deterministic re-audit from a review package, portable-package operational Crew/Production evidence, automatic Review Delta quality/trend scoring, direct HeavyBid database/API access, and production import automation.
 
 ## Non-goals and safeguards
 
