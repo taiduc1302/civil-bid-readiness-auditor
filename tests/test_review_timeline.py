@@ -78,7 +78,7 @@ class ReviewTimelineTests(unittest.TestCase):
         self.assertFalse(forward["heavybid_import_validated"])
 
     def test_duplicate_bundle_and_duplicate_transition_fail_closed(self):
-        _a, _b, _c, ab, bc = self.valid_chain()
+        _a, _b, _c, ab, _bc = self.valid_chain()
         with self.assertRaisesRegex(ValueError, "same Delta evidence bundle"):
             build_review_timeline([("one.zip", ab), ("two.zip", ab)])
 
@@ -121,6 +121,25 @@ class ReviewTimelineTests(unittest.TestCase):
         conflicting = build_review_delta_export(bc_result)[0]
         with self.assertRaisesRegex(ValueError, "conflicting snapshot lineage"):
             build_review_timeline([("ab.zip", ab), ("conflict.zip", conflicting)])
+
+    def test_self_transition_and_unsupported_lineage_versions_fail_closed(self):
+        a, b, c, _d = self.package_chain()
+        aa = self.delta("A-first.zip", a, "A-second.zip", a)
+        bc = self.delta("B.zip", b, "C.zip", c)
+        with self.assertRaisesRegex(ValueError, "self-transition"):
+            build_review_timeline([("aa.zip", aa), ("bc.zip", bc)])
+
+        ab_result = compare_review_packages("A.zip", a, "B.zip", b)
+        ab_result["earlier"]["package_version"] = 2
+        unsupported_package = build_review_delta_export(ab_result)[0]
+        with self.assertRaisesRegex(ValueError, "review-package version 1"):
+            build_review_timeline([("unsupported-package.zip", unsupported_package), ("bc.zip", bc)])
+
+        ab_result = compare_review_packages("A.zip", a, "B.zip", b)
+        ab_result["earlier"]["integrity_version"] = 2
+        unsupported_integrity = build_review_delta_export(ab_result)[0]
+        with self.assertRaisesRegex(ValueError, "integrity version 1"):
+            build_review_timeline([("unsupported-integrity.zip", unsupported_integrity), ("bc.zip", bc)])
 
     def test_minimum_and_maximum_bundle_counts_are_bounded(self):
         _a, _b, _c, ab, _bc = self.valid_chain()
