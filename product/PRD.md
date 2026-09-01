@@ -27,7 +27,7 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 17. Exact Activity/Resource code + unit validation against explicitly supplied governed reference snapshots.
 18. Governed reference evidence metadata: role, filename, user-supplied revision/label, byte size, SHA-256, and explicit `NOT_ESTABLISHED_BY_APP` authority state.
 19. Presentation-only governed reference result views: Exceptions by default, status/type filters, metadata-aware search, deterministic sort by status/source/code/type, optional grouping by status/type, compact status composition in reference-type group headings, and composed `/results` state with findings views.
-20. Optional evidence-only Crew Code / Production Rate comparison when values are explicit on both source and approved reference.
+20. Separate source-backed Operational Activity evidence UI for explicitly mapped Activity + Crew Code / Production Rate values. The user supplies a separate Activity operational CSV, only overlapping explicit fields are compared, row linkage plus upload revision/size/SHA-256 evidence is preserved, stale evidence clears when the mapped source evidence changes, and no crew/production value is inferred or calculated. Operational evidence remains session-only and outside review-package v1, archived continuation, Review Delta, and the existing reference CSV until a separate compatibility/version contract is defined.
 21. Local fictional onboarding walkthrough covering mapping, review views, dispositions, governed reference evidence, review-package export, verification, archived review continuation, and Review Delta using bundled training data only.
 22. Fixed one-click fictional structured demo kit: exactly one bundled HeavyBid-style synthetic estimate plus fixed Activity/Resource reference-download routes; references remain manual and are never auto-applied.
 23. Fail-closed bulk finding review plan v2: explicit selected finding IDs only, supported human statuses, suppression reason control, explicit human-ownership acknowledgement, expected current review states, full/selected finding fingerprints, and a plan content SHA-256 integrity check.
@@ -37,11 +37,11 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 27. Controlled output eligibility manifest requiring approved project authorities, explicit approvals, resolved exceptions, revisions, and SHA-256 identities.
 28. Versioned create-new-only candidate artifact planning with no-overwrite controls and approved schema/template identity.
 29. Immediate pre-write SHA-256 revalidation of reviewed sources and schema authority.
-30. Synthetic flat, hierarchical, HeavyBid-style, reference, review-UX, onboarding, package-integrity/semantic-preview, archived-review continuation, accessibility, bulk-review planning/application/UI, view-context, and control-gate fixtures with regression coverage.
+30. Synthetic flat, hierarchical, HeavyBid-style, reference, operational-reference, review-UX, onboarding, package-integrity/semantic-preview, archived-review continuation, accessibility, bulk-review planning/application/UI, view-context, and control-gate fixtures with regression coverage.
 31. GitHub Actions test matrix on supported Python versions.
 32. Review Delta / Change Intelligence: an in-memory comparison of two independently verified review-package snapshots. Findings align by unique sheet/row/rule/field anchors so deterministic evidence changes are separated from human status/reason changes; governed reference checks and role-linked reference metadata are compared independently. Ambiguous duplicate anchors fail closed, no review session is created, no audit/reference logic is rerun, and no improvement/correctness/readiness judgement is inferred.
 33. Temporary-session concurrency hardening for the local `ThreadingHTTPServer`: one in-memory lock per session token serializes state-sensitive read/validate/write operations while different tokens remain independently concurrent. Active lookup refreshes a 30-minute idle timeout, expiry skips a session while an active request holds its lock, and one-time bulk plans cannot be applied twice by concurrent requests.
-34. Explicit deterministic public-runtime composition: one startup composer invokes the idempotent accessibility, bulk-review, review-view-context, archived-review, and Review Delta feature installers. Content modules such as onboarding are side-effect free, and review-only renderer augmentation uses stable internal page identity rather than user-visible display-title strings.
+34. Explicit deterministic public-runtime composition: one startup composer invokes the idempotent accessibility, bulk-review, review-view-context, operational-reference, archived-review, and Review Delta feature installers. Content modules such as onboarding are side-effect free, and review-only renderer augmentation uses stable internal page identity rather than user-visible display-title strings.
 
 ## Next product milestone
 
@@ -54,9 +54,9 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 
 ### P2 — governed estimating references
 
-- expose operational Crew Code / Production Rate evidence in the local UI only when explicit governed references are supplied;
+- if Crew Code / Production Rate evidence is ever added to portable review packages, define a new explicit package/version compatibility contract and update semantic verification, archived continuation, and Review Delta together rather than overloading package-v1 reference rows;
 - retain historical cost/rate fields as non-authoritative unless explicitly designated by estimator/project controls;
-- evaluate explicit reference-review dispositions separately from deterministic code/unit matching.
+- evaluate explicit reference-review dispositions separately from deterministic code/unit and operational evidence matching.
 
 ### P3 — controlled HeavyBid candidate writer
 
@@ -74,7 +74,7 @@ The writer must:
 
 ## Deferred / not built
 
-Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, true source-file/session restoration or deterministic re-audit from a review package, direct HeavyBid database/API access, and production import automation.
+Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, true source-file/session restoration or deterministic re-audit from a review package, portable-package operational Crew/Production evidence, direct HeavyBid database/API access, and production import automation.
 
 ## Non-goals and safeguards
 
