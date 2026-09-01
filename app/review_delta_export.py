@@ -7,6 +7,7 @@ import io
 import json
 import re
 import zipfile
+from collections import Counter
 from pathlib import PurePosixPath
 from typing import Any, Iterable
 
@@ -24,6 +25,16 @@ _REQUIRED_MEMBERS = {
     "reference_metadata_changes.csv",
     "review_delta.json",
 }
+_FINDING_CHANGE_TYPES = (
+    "UNCHANGED",
+    "REVIEW_CHANGED",
+    "EVIDENCE_CHANGED",
+    "EVIDENCE_AND_REVIEW_CHANGED",
+    "ADDED",
+    "REMOVED",
+)
+_REFERENCE_CHANGE_TYPES = ("UNCHANGED", "CHANGED", "ADDED", "REMOVED")
+_METADATA_CHANGE_TYPES = ("UNCHANGED", "CHANGED", "ADDED", "REMOVED")
 MAX_DELTA_EXPORT_BYTES = 50 * 1024 * 1024
 MAX_DELTA_MEMBER_BYTES = 25 * 1024 * 1024
 MAX_DELTA_TOTAL_UNCOMPRESSED_BYTES = 75 * 1024 * 1024
@@ -207,8 +218,68 @@ def delta_export_integrity(members: dict[str, bytes]) -> dict[str, Any]:
     }
 
 
+def _counter(rows: list[dict[str, Any]], allowed: tuple[str, ...], label: str) -> dict[str, int]:
+    counts = Counter()
+    for item in rows:
+        change_type = item.get("change_type")
+        if change_type not in allowed:
+            raise ValueError(f"Review Delta comparison contains unsupported {label} change type: {change_type}")
+        counts[change_type] += 1
+    return {key: counts.get(key, 0) for key in allowed}
+
+
+def _validate_unique_anchors(result: dict[str, Any]) -> None:
+    finding_seen: set[tuple[str, int, str, str]] = set()
+    for item in result["finding_changes"]:
+        anchor = item.get("anchor")
+        if not isinstance(anchor, dict):
+            raise ValueError("Review Delta comparison finding anchor must be an object.")
+        row = anchor.get("row")
+        if not isinstance(row, int) or isinstance(row, bool):
+            raise ValueError("Review Delta comparison finding anchor row must be an integer.")
+        values = (anchor.get("sheet"), anchor.get("rule_id"), anchor.get("field"))
+        if not all(isinstance(value, str) for value in values):
+            raise ValueError("Review Delta comparison finding anchor fields must be strings.")
+        key = (values[0], row, values[1], values[2])
+        if key in finding_seen:
+            raise ValueError(f"Review Delta export contains duplicate finding anchor: {key!r}")
+        finding_seen.add(key)
+        for field in ("evidence_fields_changed", "review_fields_changed"):
+            value = item.get(field)
+            if not isinstance(value, list) or not all(isinstance(entry, str) for entry in value):
+                raise ValueError(f"Review Delta comparison finding field must be a list of strings: {field}")
+
+    reference_seen: set[tuple[str, str, str, str]] = set()
+    for item in result["reference_changes"]:
+        anchor = item.get("anchor")
+        if not isinstance(anchor, dict):
+            raise ValueError("Review Delta comparison reference anchor must be an object.")
+        values = tuple(anchor.get(field) for field in ("reference_type", "sheet", "source_row", "code"))
+        if not all(isinstance(value, str) for value in values):
+            raise ValueError("Review Delta comparison reference anchor fields must be strings.")
+        if values in reference_seen:
+            raise ValueError(f"Review Delta export contains duplicate reference anchor: {values!r}")
+        reference_seen.add(values)
+        fields_changed = item.get("fields_changed")
+        if not isinstance(fields_changed, list) or not all(isinstance(entry, str) for entry in fields_changed):
+            raise ValueError("Review Delta comparison reference fields_changed must be a list of strings.")
+
+    metadata_seen: set[str] = set()
+    for item in result["reference_metadata_changes"]:
+        role = item.get("role")
+        if role not in ("activity", "resource"):
+            raise ValueError("Review Delta comparison contains unsupported reference metadata role.")
+        if role in metadata_seen:
+            raise ValueError(f"Review Delta export contains duplicate reference metadata role: {role}")
+        metadata_seen.add(role)
+        fields_changed = item.get("fields_changed")
+        if not isinstance(fields_changed, list) or not all(isinstance(entry, str) for entry in fields_changed):
+            raise ValueError("Review Delta comparison metadata fields_changed must be a list of strings.")
+
+
 def _validate_comparison_result(result: dict[str, Any]) -> None:
-    if result.get("comparison_format") != "civil-estimate-review-delta" or result.get("comparison_version") != 1:
+    version = result.get("comparison_version")
+    if result.get("comparison_format") != "civil-estimate-review-delta" or version != 1 or isinstance(version, bool):
         raise ValueError("Unsupported Review Delta comparison result.")
     for field in ("earlier", "later", "finding_counts", "reference_counts", "reference_metadata_counts"):
         if not isinstance(result.get(field), dict):
@@ -217,9 +288,23 @@ def _validate_comparison_result(result: dict[str, Any]) -> None:
         value = result.get(field)
         if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
             raise ValueError(f"Review Delta comparison field must be a list of objects: {field}")
+    for flag in ("same_source_filename", "same_package_sha256"):
+        if not isinstance(result.get(flag), bool):
+            raise ValueError(f"Review Delta comparison field must be boolean: {flag}")
     for flag in ("session_created", "re_audit_performed", "correctness_inferred", "readiness_inferred", "heavybid_import_validated"):
         if result.get(flag) is not False:
             raise ValueError(f"Review Delta export requires {flag}=false.")
+
+    _validate_unique_anchors(result)
+    finding_counts = _counter(result["finding_changes"], _FINDING_CHANGE_TYPES, "finding")
+    reference_counts = _counter(result["reference_changes"], _REFERENCE_CHANGE_TYPES, "reference")
+    metadata_counts = _counter(result["reference_metadata_changes"], _METADATA_CHANGE_TYPES, "reference metadata")
+    if result["finding_counts"] != finding_counts:
+        raise ValueError("Review Delta comparison finding_counts do not match finding change rows.")
+    if result["reference_counts"] != reference_counts:
+        raise ValueError("Review Delta comparison reference_counts do not match reference change rows.")
+    if result["reference_metadata_counts"] != metadata_counts:
+        raise ValueError("Review Delta comparison reference_metadata_counts do not match metadata change rows.")
 
 
 def _write_member(book: zipfile.ZipFile, name: str, data: bytes) -> None:
@@ -330,7 +415,7 @@ def verify_review_delta_export(data: bytes) -> dict[str, Any]:
             expected_size = entry.get("size_bytes")
             if not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
                 raise ValueError(f"Review Delta export integrity SHA-256 is invalid: {name}")
-            if not isinstance(expected_size, int) or expected_size < 0:
+            if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size < 0:
                 raise ValueError(f"Review Delta export integrity size is invalid: {name}")
             member_data = _read_member(book, name)
             if len(member_data) != expected_size:
