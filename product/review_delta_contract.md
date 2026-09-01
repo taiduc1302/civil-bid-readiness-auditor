@@ -65,6 +65,30 @@ The export does not embed the original review-package ZIPs, original estimate/re
 
 Export creation fails closed unless the comparison continues to assert `session_created=false`, `re_audit_performed=false`, `correctness_inferred=false`, `readiness_inferred=false`, and `heavybid_import_validated=false`.
 
+## Independent portable-export verification
+
+A separate local `/verify-review-delta` flow accepts one `civil-estimate-review-delta-export` v1 ZIP. Verification runs entirely in memory, writes nothing to disk, and creates no review session.
+
+The verifier requires the exact supported root-file member set and rejects directory entries, duplicate names, unsafe paths, missing/unexpected members, unreadable ZIP content, unsupported identities, oversized members, and excessive total uncompressed size.
+
+After ZIP structure checks, `integrity.json` must exactly describe every non-integrity member by byte size and SHA-256. Integrity success alone is not sufficient. The verifier then treats `review_delta.json` as the canonical archived comparison evidence and enforces:
+
+- supported comparison identity/version;
+- required no-session/no-re-audit/no-correctness/no-readiness/no-HeavyBid-validation flags;
+- boolean lineage comparison fields;
+- unique finding anchors `(sheet, row, rule_id, field)`;
+- unique reference anchors `(reference_type, sheet, source_row, code)`;
+- at most one metadata row per supported `activity` / `resource` role;
+- supported change-type vocabularies only;
+- string-only changed-field lists;
+- finding/reference/reference-metadata summary counts recomputed from the actual change rows.
+
+From that canonical JSON evidence, the verifier deterministically regenerates the expected manifest and all three CSVs and requires exact agreement with the archived bytes. It also requires the supported README safety text. Therefore a bundle that has merely been internally re-hashed after altering counts, change types, anchors, manifest fields, or CSV evidence fails closed.
+
+Successful verification returns only bounded escaped preview evidence plus lineage/count metadata. It proves **bundle structure, hashes, and internal semantic consistency only**. It does not prove that either underlying estimate is correct, that either original review package still matches current project/source files, that a reference was authoritative, that any change is an improvement/regression, or that HeavyBid import is valid.
+
+Session-only Operational Crew/Production evidence remains outside review-package v1 and delta-export v1 and is never reconstructed or inferred during verification.
+
 ## Explicit non-goals
 
 - no deterministic re-audit;
