@@ -43,6 +43,28 @@ A dedicated local `/compare-review-packages` screen accepts exactly two review-p
 
 The result page shows summary counts and bounded tables of changed findings, changed reference checks, and reference metadata drift. Unchanged rows are counted but omitted from the default detail tables.
 
+## Portable evidence export
+
+The same two-package form can submit to `/export-review-delta`. Both review packages are independently re-verified and compared again before any export bytes are returned. The route creates no review session and retains no uploaded package bytes.
+
+The resulting ZIP is a separate `civil-estimate-review-delta-export` format, version 1. It is **not** a review package and must not be treated as an archived-review restoration input.
+
+The bundle contains:
+
+- `manifest.json` — package lineage, delta counts, content declarations, and explicit safety flags;
+- `review_delta.json` — the full machine-readable comparison result;
+- `finding_changes.csv` — flattened finding delta rows;
+- `reference_changes.csv` — flattened standard Activity/Resource reference-check delta rows;
+- `reference_metadata_changes.csv` — flattened standard reference metadata drift;
+- `README.txt` — human-readable safety boundary; and
+- `integrity.json` — SHA-256 and byte size for every other export member.
+
+Member names, JSON serialization, CSV ordering, ZIP member ordering, and ZIP timestamps are deterministic so the same comparison result produces byte-identical export bytes. CSV cells beginning with spreadsheet-formula prefixes are escaped.
+
+The export does not embed the original review-package ZIPs, original estimate/reference bytes, or session-only Operational Crew/Production evidence. Operational evidence is not part of review-package v1 and therefore is not reconstructed or invented during Review Delta export.
+
+Export creation fails closed unless the comparison continues to assert `session_created=false`, `re_audit_performed=false`, `correctness_inferred=false`, `readiness_inferred=false`, and `heavybid_import_validated=false`.
+
 ## Explicit non-goals
 
 - no deterministic re-audit;
