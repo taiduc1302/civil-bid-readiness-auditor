@@ -7,25 +7,24 @@ and each destination independently performs its own verification contract.
 from __future__ import annotations
 
 import html
-from typing import Callable
+from urllib.parse import urlparse
 
 import server_legacy as _server
 
-EVIDENCE_PAGE_TITLES = {
-    "Review Delta": "/compare-review-packages",
-    "Verify Review Delta evidence": "/verify-review-delta",
-    "Review Timeline": "/review-timeline",
+EVIDENCE_ROUTES = {
+    "/compare-review-packages",
+    "/verify-review-delta",
+    "/review-timeline",
 }
 
 
-def review_evidence_navigation(current_title: str) -> str:
+def review_evidence_navigation(current_path: str) -> str:
     links: list[str] = []
     labels = (
         ("Review Delta", "/compare-review-packages"),
         ("Verify one Delta bundle", "/verify-review-delta"),
         ("Review Timeline", "/review-timeline"),
     )
-    current_path = EVIDENCE_PAGE_TITLES.get(current_title, "")
     for label, path in labels:
         if path == current_path:
             links.append(f"<strong aria-current='page'>{html.escape(label)}</strong>")
@@ -45,12 +44,14 @@ def review_evidence_navigation(current_title: str) -> str:
 def install_review_evidence_navigation() -> None:
     if getattr(_server, "_review_evidence_navigation_installed", False):
         return
-    original_page: Callable[[str, str], bytes] = _server.page
+    original_send_html = _server.Handler.send_html
 
-    def page(title: str, body: str) -> bytes:
-        if title in EVIDENCE_PAGE_TITLES:
-            body = review_evidence_navigation(title) + body
-        return original_page(title, body)
+    def send_html(self: _server.BaseHTTPRequestHandler, content: bytes, status: int = 200) -> None:
+        current_path = urlparse(self.path).path
+        if current_path in EVIDENCE_ROUTES:
+            nav = review_evidence_navigation(current_path).encode("utf-8")
+            content = content.replace(b"</main>", nav + b"</main>", 1)
+        original_send_html(self, content, status)
 
-    _server.page = page
+    _server.Handler.send_html = send_html
     _server._review_evidence_navigation_installed = True
