@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import sys
 import unittest
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,10 +118,15 @@ class ReviewTimelineTests(unittest.TestCase):
 
     def test_tampered_bundle_fails_before_timeline_details_are_built(self):
         _a, _b, _c, ab, bc = self.valid_chain()
-        tampered = bytearray(ab)
-        tampered[len(tampered) // 2] ^= 0x01
-        with self.assertRaises(ValueError):
-            build_review_timeline([("tampered.zip", bytes(tampered)), ("bc.zip", bc)])
+        with zipfile.ZipFile(io.BytesIO(ab)) as source:
+            members = {name: source.read(name) for name in source.namelist()}
+        members["README.txt"] = b"X" + members["README.txt"][1:]
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as book:
+            for name, payload in members.items():
+                book.writestr(name, payload)
+        with self.assertRaisesRegex(ValueError, "SHA-256 does not match"):
+            build_review_timeline([("tampered.zip", output.getvalue()), ("bc.zip", bc)])
 
     def test_duplicate_bundle_and_duplicate_transition_fail_closed(self):
         _a, _b, _c, ab, _bc = self.valid_chain()
