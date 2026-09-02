@@ -14,7 +14,11 @@ from finding_review import default_dispositions
 from review_delta import compare_review_packages
 from review_delta_export import build_review_delta_export
 from review_package import build_review_package
-from review_timeline import build_review_timeline
+from review_timeline import (
+    MAX_TIMELINE_FINDING_DETAILS_PER_TRANSITION,
+    _bounded_detail_category,
+    build_review_timeline,
+)
 
 
 class ReviewTimelineTests(unittest.TestCase):
@@ -68,6 +72,15 @@ class ReviewTimelineTests(unittest.TestCase):
         )
         middle = forward["snapshots"][1]
         self.assertEqual(middle["package_filename_aliases"], ["B-first-name.zip", "B-renamed.zip"])
+
+        first_details = forward["transitions"][0]["detail_preview"]
+        self.assertEqual(first_details["finding_changes"]["changed_total"], 1)
+        self.assertEqual(first_details["finding_changes"]["shown"], 1)
+        self.assertEqual(first_details["finding_changes"]["omitted"], 0)
+        self.assertEqual(first_details["finding_changes"]["rows"][0]["change_type"], "REVIEW_CHANGED")
+        self.assertEqual(first_details["reference_changes"]["changed_total"], 0)
+        self.assertEqual(first_details["reference_metadata_changes"]["changed_total"], 0)
+
         self.assertTrue(forward["continuity_verified_by_package_sha256"])
         self.assertFalse(forward["session_created"])
         self.assertFalse(forward["re_audit_performed"])
@@ -76,6 +89,37 @@ class ReviewTimelineTests(unittest.TestCase):
         self.assertFalse(forward["improvement_regression_inferred"])
         self.assertFalse(forward["readiness_inferred"])
         self.assertFalse(forward["heavybid_import_validated"])
+
+    def test_detail_category_is_bounded_and_excludes_unchanged_rows(self):
+        rows = [
+            {
+                "change_type": "REVIEW_CHANGED",
+                "anchor": {"sheet": "Estimate", "row": index, "rule_id": "R001", "field": "rate"},
+                "evidence_fields_changed": [],
+                "review_fields_changed": ["reason"],
+            }
+            for index in range(40)
+        ]
+        rows.append({"change_type": "UNCHANGED"})
+        counts = {"REVIEW_CHANGED": 40, "UNCHANGED": 1}
+        result = _bounded_detail_category(
+            rows,
+            counts,
+            limit=MAX_TIMELINE_FINDING_DETAILS_PER_TRANSITION,
+            label="finding",
+        )
+        self.assertEqual(result["changed_total"], 40)
+        self.assertEqual(result["shown"], MAX_TIMELINE_FINDING_DETAILS_PER_TRANSITION)
+        self.assertEqual(result["omitted"], 40 - MAX_TIMELINE_FINDING_DETAILS_PER_TRANSITION)
+        self.assertEqual(result["limit"], MAX_TIMELINE_FINDING_DETAILS_PER_TRANSITION)
+        self.assertTrue(all(item["change_type"] != "UNCHANGED" for item in result["rows"]))
+
+    def test_tampered_bundle_fails_before_timeline_details_are_built(self):
+        _a, _b, _c, ab, bc = self.valid_chain()
+        tampered = bytearray(ab)
+        tampered[len(tampered) // 2] ^= 0x01
+        with self.assertRaises(ValueError):
+            build_review_timeline([("tampered.zip", bytes(tampered)), ("bc.zip", bc)])
 
     def test_duplicate_bundle_and_duplicate_transition_fail_closed(self):
         _a, _b, _c, ab, _bc = self.valid_chain()
