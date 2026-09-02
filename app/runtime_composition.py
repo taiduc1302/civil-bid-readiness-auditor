@@ -14,6 +14,7 @@ from bulk_review_ui import install_bulk_review_ui
 from operational_reference_ui import install_operational_reference_ui
 from review_delta_ui import install_review_delta_ui
 from review_delta_verification import install_review_delta_verification_ui
+from review_timeline_ui import install_review_timeline_ui
 from review_view_context import install_review_view_context
 
 Installer = Callable[[], None]
@@ -26,6 +27,7 @@ _PUBLIC_FEATURES: tuple[tuple[str, Installer], ...] = (
     ("archived_review_ui", install_archived_review_ui),
     ("review_delta_ui", install_review_delta_ui),
     ("review_delta_verification_ui", install_review_delta_verification_ui),
+    ("review_timeline_ui", install_review_timeline_ui),
 )
 
 
