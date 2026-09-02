@@ -40,8 +40,8 @@ class ReviewEvidenceNavigationTests(unittest.TestCase):
         return status, payload
 
     def test_navigation_block_has_all_routes_and_explicit_no_carry_boundary(self):
-        block = review_evidence_navigation("Review Delta")
-        self.assertIn("/compare-review-packages", block)
+        block = review_evidence_navigation("/compare-review-packages")
+        self.assertIn("aria-current='page'", block)
         self.assertIn("/verify-review-delta", block)
         self.assertIn("/review-timeline", block)
         self.assertIn("No evidence is carried between these pages", block)
@@ -51,14 +51,19 @@ class ReviewEvidenceNavigationTests(unittest.TestCase):
         self.assertNotIn("type='hidden'", block)
 
     def test_all_evidence_pages_cross_link_without_creating_session(self):
-        for path in ("/compare-review-packages", "/verify-review-delta", "/review-timeline"):
+        routes = ("/compare-review-packages", "/verify-review-delta", "/review-timeline")
+        for path in routes:
             with self.subTest(path=path):
                 status, page = self.request(path)
                 self.assertEqual(status, 200)
                 self.assertIn(b"Review evidence views", page)
-                self.assertIn(b"href='/compare-review-packages'", page)
-                self.assertIn(b"href='/verify-review-delta'", page)
-                self.assertIn(b"href='/review-timeline'", page)
+                self.assertIn(b"Review Delta", page)
+                self.assertIn(b"Verify one Delta bundle", page)
+                self.assertIn(b"Review Timeline", page)
+                self.assertIn(b"aria-current='page'", page)
+                for other in routes:
+                    if other != path:
+                        self.assertIn(f"href='{other}'".encode(), page)
                 self.assertIn(b"No evidence is carried between these pages", page)
                 self.assertIn(b"Re-select evidence at the destination", page)
                 self.assertEqual(SESSIONS, {})
