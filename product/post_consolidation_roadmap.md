@@ -29,6 +29,7 @@ Review Timeline is part of the public local runtime. It:
 - exposes bounded per-transition changed-evidence details only from `verify_review_delta_export()` preview rows: up to 25 findings, 25 governed-reference checks, and 10 reference-metadata rows per transition, with explicit omission counts and 500-character cell bounds;
 - keeps `UNCHANGED` rows in verified count summaries while omitting them from detail previews without interpreting that omission as improvement;
 - cross-links Review Delta comparison, independent Delta verification, and Review Timeline while explicitly requiring evidence to be re-selected and independently verified at each destination;
+- has regression coverage for a 10-transition valid chain submitted out of order plus malformed aggregate multipart envelopes at the dedicated parser boundary;
 - creates no review session and reruns no estimate/reference logic; and
 - uses a dedicated bounded multipart path compatible with the Delta verifier's 50 MB per-bundle limit rather than inheriting the legacy 26 MB request cap.
 
@@ -42,7 +43,7 @@ Preferred next increments stay read-only and work only from already verified evi
 
 1. **Delivered:** bounded per-transition evidence-detail disclosure from independently verified Delta preview rows, with explicit row/cell bounds and unchanged no-session/no-inference semantics;
 2. **Delivered:** safe cross-navigation among Review Delta verification and Review Timeline without persisting uploads, carrying verification/lineage state, or inventing chronology;
-3. add focused regression fixtures for larger valid multi-bundle timeline requests and malformed aggregate requests without weakening per-bundle verifier limits;
+3. **Delivered:** focused regression fixtures for a valid 10-transition chain and malformed/oversized aggregate requests without weakening per-bundle verifier limits;
 4. keep any future timeline export deterministic and evidence-only; do not introduce timestamps, generated narratives, or trend scoring unless a separate explicit contract is approved.
 
 ### P2 — portable operational evidence only under a new version contract
