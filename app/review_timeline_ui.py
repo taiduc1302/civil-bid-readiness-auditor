@@ -2,13 +2,49 @@
 from __future__ import annotations
 
 import html
+from email import policy
+from email.parser import BytesParser
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import server_legacy as _server
+from review_delta_export import MAX_DELTA_EXPORT_BYTES
 from review_timeline import MAX_TIMELINE_DELTAS, MIN_TIMELINE_DELTAS, build_review_timeline
+
+TIMELINE_MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
+TIMELINE_MAX_REQUEST_BYTES = (
+    MAX_TIMELINE_DELTAS * MAX_DELTA_EXPORT_BYTES + TIMELINE_MULTIPART_OVERHEAD_BYTES
+)
+
+
+def _timeline_multipart_message(handler: Any):
+    """Parse a bounded multi-bundle request without inheriting the legacy 26 MB cap."""
+    content_type = handler.headers.get("Content-Type", "")
+    if not content_type.startswith("multipart/form-data"):
+        raise _server.InputError("Upload request must use multipart form data.")
+    try:
+        length = int(handler.headers.get("Content-Length", "0") or "0")
+    except (TypeError, ValueError) as exc:
+        raise _server.InputError("Upload request has an invalid Content-Length.") from exc
+    if length <= 0 or length > TIMELINE_MAX_REQUEST_BYTES:
+        max_mib = TIMELINE_MAX_REQUEST_BYTES // (1024 * 1024)
+        raise _server.InputError(
+            f"Review Timeline upload request is empty or exceeds the local {max_mib} MB aggregate request limit."
+        )
+    raw = handler.rfile.read(length)
+    if len(raw) != length:
+        raise _server.InputError("Review Timeline upload request ended before its declared Content-Length.")
+    try:
+        message = BytesParser(policy=policy.default).parsebytes(
+            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + raw
+        )
+    except Exception as exc:
+        raise _server.InputError("Upload request contains malformed multipart form data.") from exc
+    if not message.is_multipart():
+        raise _server.InputError("Upload request contains malformed multipart form data.")
+    return message
 
 
 def _read_delta_exports(message: Any) -> list[tuple[str, bytes]]:
@@ -30,6 +66,11 @@ def _read_delta_exports(message: Any) -> list[tuple[str, bytes]]:
             payload = content.encode(part.get_content_charset() or "utf-8") if isinstance(content, str) else bytes(content)
         if not payload:
             raise _server.InputError("Review Timeline Delta evidence ZIPs cannot be blank.")
+        if len(payload) > MAX_DELTA_EXPORT_BYTES:
+            max_mib = MAX_DELTA_EXPORT_BYTES // (1024 * 1024)
+            raise _server.InputError(
+                f"Each Review Timeline Delta evidence ZIP must be at most {max_mib} MB."
+            )
         uploads.append((safe_name, bytes(payload)))
     if len(uploads) < MIN_TIMELINE_DELTAS:
         raise _server.InputError(f"Choose at least {MIN_TIMELINE_DELTAS} Review Delta evidence ZIPs.")
@@ -86,10 +127,13 @@ def timeline_page_body(result: dict[str, Any] | None = None, error: str = "") ->
 <p class='visually-helpful'>Every input Delta bundle was independently verified before chain construction. The model creates no review session, reruns no audit/reference logic, and does not reconstruct session-only Operational Crew/Production evidence.</p>
 </section>"""
 
+    max_bundle_mib = MAX_DELTA_EXPORT_BYTES // (1024 * 1024)
+    max_request_mib = TIMELINE_MAX_REQUEST_BYTES // (1024 * 1024)
     return f"""{alert}{output}
 <section class='card'>
 <h2>Build Review Timeline</h2>
 <p>Select {MIN_TIMELINE_DELTAS}–{MAX_TIMELINE_DELTAS} portable Review Delta evidence ZIPs. Upload order does not control the result: the app verifies every bundle and reconstructs one linear chain only from exact Earlier/Later review-package SHA-256 continuity.</p>
+<p class='visually-helpful'>Each Delta evidence ZIP is limited to {max_bundle_mib} MB. The full multipart request is bounded to {max_request_mib} MB including form overhead.</p>
 <form action='/review-timeline' method='post' enctype='multipart/form-data'>
 <p><label>Review Delta evidence ZIPs <input type='file' name='delta_export' accept='.zip,application/zip' multiple required></label></p>
 <p><button type='submit'>Build evidence timeline</button> <a href='/verify-review-delta'>Verify one Delta bundle</a> <a href='/compare-review-packages'>Review Delta</a> <a href='/'>Home</a></p>
@@ -123,7 +167,7 @@ def install_review_timeline_ui() -> None:
             original_post(self)
             return
         try:
-            message = _server._multipart_message(self)
+            message = _timeline_multipart_message(self)
             uploads = _read_delta_exports(message)
             result = build_review_timeline(uploads)
             self.send_html(_server.page("Review Timeline", timeline_page_body(result=result)))
