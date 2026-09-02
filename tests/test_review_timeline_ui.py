@@ -18,7 +18,12 @@ from finding_review import default_dispositions
 from review_delta import compare_review_packages
 from review_delta_export import MAX_DELTA_EXPORT_BYTES, build_review_delta_export
 from review_package import build_review_package
-from review_timeline_ui import TIMELINE_MAX_REQUEST_BYTES, _timeline_multipart_message
+from review_timeline_ui import (
+    MAX_TIMELINE_DETAIL_CELL_CHARS,
+    TIMELINE_MAX_REQUEST_BYTES,
+    _cell,
+    _timeline_multipart_message,
+)
 from server import Handler, SESSIONS, ThreadingHTTPServer
 
 
@@ -63,8 +68,8 @@ class ReviewTimelineUiTests(unittest.TestCase):
         b = copy.deepcopy(a)
         c = copy.deepcopy(a)
         d = copy.deepcopy(a)
-        b["dispositions"][1] = {"status": "Reviewed", "reason": "A to B"}
-        c["dispositions"][1] = {"status": "Reviewed", "reason": "A to B"}
+        b["dispositions"][1] = {"status": "Reviewed", "reason": "<evil&review>"}
+        c["dispositions"][1] = {"status": "Reviewed", "reason": "<evil&review>"}
         c["dispositions"][2] = {"status": "Needs correction", "reason": "B to C"}
         d["dispositions"][3] = {"status": "Accepted", "reason": "D"}
         return tuple(build_review_package(item)[0] for item in (a, b, c, d))
@@ -127,6 +132,13 @@ class ReviewTimelineUiTests(unittest.TestCase):
         message = _timeline_multipart_message(handler)
         self.assertTrue(message.is_multipart())
 
+    def test_detail_cells_are_escaped_and_character_bounded(self):
+        rendered = _cell("<tag>" + "x" * (MAX_TIMELINE_DETAIL_CELL_CHARS + 50))
+        self.assertIn("&lt;tag&gt;", rendered)
+        self.assertNotIn("<tag>", rendered)
+        self.assertTrue(rendered.endswith("…"))
+        self.assertLessEqual(len(rendered), MAX_TIMELINE_DETAIL_CELL_CHARS + 10)
+
     def test_reversed_upload_order_builds_sha_chain_with_escaped_labels_and_no_session(self):
         a, b, c, _d = self.packages()
         ab = self.delta("A.zip", a, "B-original.zip", b)
@@ -151,6 +163,13 @@ class ReviewTimelineUiTests(unittest.TestCase):
         self.assertGreater(bc_position, ab_position)
         self.assertIn(b"Transition chronology only", page)
         self.assertIn(b"not a trend score", page)
+        self.assertIn(b"Bounded transition evidence details", page)
+        self.assertIn(b"REVIEW_CHANGED", page)
+        self.assertIn(b"&lt;evil&amp;review&gt;", page)
+        self.assertNotIn(b"<evil&review>", page)
+        self.assertIn(b"UNCHANGED rows remain represented", page)
+        self.assertIn(b"Showing all 1 verified changed finding rows", page)
+        self.assertIn(b"do not imply improvement, regression", page)
         self.assertEqual(SESSIONS, {})
 
     def test_disconnected_or_invalid_inputs_fail_safely_without_session(self):
