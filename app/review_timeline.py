@@ -12,6 +12,9 @@ TIMELINE_FORMAT = "civil-estimate-review-timeline"
 TIMELINE_VERSION = 1
 MIN_TIMELINE_DELTAS = 2
 MAX_TIMELINE_DELTAS = 10
+MAX_TIMELINE_FINDING_DETAILS_PER_TRANSITION = 25
+MAX_TIMELINE_REFERENCE_DETAILS_PER_TRANSITION = 25
+MAX_TIMELINE_METADATA_DETAILS_PER_TRANSITION = 10
 _PACKAGE_FORMAT = "civil-estimate-review-package"
 _PACKAGE_VERSION = 1
 _INTEGRITY_VERSION = 1
@@ -73,6 +76,70 @@ def _register_snapshot(registry: dict[str, dict[str, Any]], snapshot: dict[str, 
     return package_sha
 
 
+def _changed_total(counts: Any, label: str) -> int:
+    if not isinstance(counts, dict):
+        raise ValueError(f"Verified Review Delta {label} counts must be an object.")
+    total = 0
+    for change_type, value in counts.items():
+        if not isinstance(change_type, str):
+            raise ValueError(f"Verified Review Delta {label} count keys must be text.")
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"Verified Review Delta {label} counts must be nonnegative integers.")
+        if change_type != "UNCHANGED":
+            total += value
+    return total
+
+
+def _bounded_detail_category(
+    rows: Any,
+    counts: Any,
+    *,
+    limit: int,
+    label: str,
+) -> dict[str, Any]:
+    if not isinstance(rows, list) or not all(isinstance(item, dict) for item in rows):
+        raise ValueError(f"Verified Review Delta {label} preview must be a list of objects.")
+    changed_rows = [dict(item) for item in rows if item.get("change_type") != "UNCHANGED"]
+    changed_total = _changed_total(counts, label)
+    shown_rows = changed_rows[:limit]
+    if changed_total < len(shown_rows):
+        raise ValueError(f"Verified Review Delta {label} preview exceeds its verified changed-row count.")
+    return {
+        "rows": shown_rows,
+        "changed_total": changed_total,
+        "shown": len(shown_rows),
+        "omitted": changed_total - len(shown_rows),
+        "limit": limit,
+    }
+
+
+def _detail_preview(verified: dict[str, Any]) -> dict[str, Any]:
+    """Return a narrower Timeline preview from already verified Delta evidence only."""
+    preview = verified.get("preview")
+    if not isinstance(preview, dict):
+        raise ValueError("Verified Review Delta preview evidence is required for Timeline details.")
+    return {
+        "finding_changes": _bounded_detail_category(
+            preview.get("finding_changes"),
+            verified.get("finding_counts"),
+            limit=MAX_TIMELINE_FINDING_DETAILS_PER_TRANSITION,
+            label="finding",
+        ),
+        "reference_changes": _bounded_detail_category(
+            preview.get("reference_changes"),
+            verified.get("reference_counts"),
+            limit=MAX_TIMELINE_REFERENCE_DETAILS_PER_TRANSITION,
+            label="reference",
+        ),
+        "reference_metadata_changes": _bounded_detail_category(
+            preview.get("reference_metadata_changes"),
+            verified.get("reference_metadata_counts"),
+            limit=MAX_TIMELINE_METADATA_DETAILS_PER_TRANSITION,
+            label="reference metadata",
+        ),
+    }
+
+
 def _edge_record(filename: str, data: bytes, verified: dict[str, Any], earlier_sha: str, later_sha: str) -> dict[str, Any]:
     return {
         "delta_filename": Path(str(filename or "review_delta.zip")).name or "review_delta.zip",
@@ -82,6 +149,7 @@ def _edge_record(filename: str, data: bytes, verified: dict[str, Any], earlier_s
         "finding_counts": dict(verified.get("finding_counts", {})),
         "reference_counts": dict(verified.get("reference_counts", {})),
         "reference_metadata_counts": dict(verified.get("reference_metadata_counts", {})),
+        "detail_preview": _detail_preview(verified),
     }
 
 
