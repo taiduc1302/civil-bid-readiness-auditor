@@ -1,82 +1,66 @@
 # Post-consolidation product audit and roadmap
 
-## Baseline after consolidation
+## Current review-product baseline
 
-The current `main` includes five distinct layers:
+The current product is a local-first deterministic **review** system, not a bid-readiness certification system. Its built layers now include:
 
-1. vendor-neutral deterministic audit core;
-2. hierarchical civil estimate context and conservative UOM normalization;
-3. fail-closed HeavyBid-style flat resource-export adapter;
-4. temporary local human finding review/disposition workflow;
-5. exact governed Activity/Resource reference validation against explicitly supplied CSV snapshots.
+1. CSV/XLSX ingestion, manual mapping, hierarchy-aware context, deterministic review rules, and conservative UOM normalization;
+2. fail-closed HeavyBid-style flat resource-export mapping that never invents estimate values;
+3. temporary human finding dispositions, filters/sorts/groups, attention summaries, accessibility semantics, explicit-selection bulk review, and per-session concurrency controls;
+4. governed Activity/Resource reference validation plus separate session-only Operational Activity Crew Code / Production Rate comparison when those values are explicitly supplied;
+5. deterministic portable review-package export, strict integrity + semantic verification, bounded read-only preview, and acknowledged archived-review continuation;
+6. Review Delta comparison, deterministic portable Delta export, and independent Delta-export verification;
+7. neutral Review Timeline reconstruction from 2–10 independently verified Delta bundles using exact review-package SHA-256 continuity only;
+8. controlled output eligibility planning and pre-write hash revalidation, without a HeavyBid candidate writer.
 
-All current layers remain review aids. None certifies bid correctness or production HeavyBid import safety.
+All layers remain review aids. None certifies estimate correctness, bid readiness, reference authority, commercial approval, or production HeavyBid import safety.
 
-## Product audit findings
+## Delivered Review Timeline increment
 
-### A. Documentation drift — fix now
+Review Timeline is now part of the public local runtime. It:
 
-The implementation moved beyond the original P0 documentation. README, PRD, user workflow, claims, and acceptance criteria must describe review dispositions, governed references, and the HeavyBid-style boundary consistently.
+- accepts 2–10 `civil-estimate-review-delta-export` v1 ZIPs;
+- independently verifies every bundle before using lineage/count evidence;
+- orders one connected acyclic linear chain only from exact `Earlier -> Later` review-package SHA-256 continuity;
+- rejects duplicate/conflicting/branching/merging/cyclic/disconnected lineage;
+- preserves package filenames as descriptive aliases only;
+- renders bounded escaped snapshot/transition evidence;
+- creates no review session and reruns no estimate/reference logic; and
+- uses a dedicated bounded multipart path compatible with the Delta verifier's 50 MB per-bundle limit rather than inheriting the legacy 26 MB request cap.
 
-### B. Product naming / positioning — decision required
+It is evidence chronology only. It does not infer calendar dates, source currency, commercial revision identity, quality, improvement/regression, approval, bid readiness, or HeavyBid import validity. Session-only Operational Crew/Production evidence remains outside review-package v1, Delta-export v1, and Review Timeline.
 
-`Civil Bid Readiness Auditor` can be read as a certification claim even though the product explicitly does not validate bid readiness. Evaluate a safer public product name such as `Civil Estimate Review Auditor` or `Civil Estimate QA Auditor` while preserving repository history and existing links.
+## Next safe roadmap increments
 
-Do not rename solely for cosmetics; decide after checking desired commercial positioning and migration impact.
+### P1 — read-only evidence UX hardening
 
-### C. Ingestion technical debt
+Preferred next increments stay read-only and work only from already verified evidence:
 
-- XLSX scans early rows for a likely header; CSV currently assumes the first row is the header.
-- The custom standard-library XLSX parser intentionally does not evaluate formulas or support arbitrary advanced workbook features.
-- Reference CSVs are intentionally narrow and explicit.
+1. add bounded per-transition evidence-detail disclosure to Review Timeline, using the already independently verified Delta comparison rows and preserving the current no-session/no-inference contract;
+2. improve cross-navigation among Review Delta verification and Review Timeline without persisting uploads or inventing chronology;
+3. add focused regression fixtures for larger valid multi-bundle timeline requests and malformed aggregate requests without weakening per-bundle verifier limits;
+4. keep any future timeline export deterministic and evidence-only; do not introduce timestamps, generated narratives, or trend scoring unless a separate explicit contract is approved.
 
-Recommended next hardening: add controlled CSV header scanning with source-row preservation and regression fixtures.
+### P2 — portable operational evidence only under a new version contract
 
-### D. Hierarchy granularity technical debt
+Operational Crew Code / Production Rate evidence is currently session-only. If portability is required, define a new package/version compatibility contract first, then update package verification, archived continuation, Review Delta, and Review Timeline together. Do not retrofit those fields into review-package v1 or Delta-export v1.
 
-The current duplicate/conflict context key includes Bid Item, Activity, Resource Type, and Resource Code. This is conservative for resource-level comparisons, but it can prevent an Activity-level conflict from surfacing when different resource codes are present.
+Historical cost/rate fields remain non-authoritative unless explicitly designated by project controls. No missing Crew, Production, Rate, Quantity, Activity, Resource, or Bid Item value may be inferred or designed by the application.
 
-Do not simply remove Resource Code globally. Split rule context deliberately by rule semantics and add fixtures for Bid Item-, Activity-, and Resource-level conflicts.
+### P3 — controlled HeavyBid candidate writer remains gated
 
-### E. Review workflow UX
+A HeavyBid candidate writer is **not built**. Do not implement one merely because review/reference gates exist.
 
-Current disposition state is temporary and local. This is safe for the MVP but limits multi-session review. Before adding persistence, define a versioned audit/review package with explicit source identity and no silent overwrite. Persistence should not blur deterministic findings with human dispositions.
+Any future HeavyBid-readable test artifact must require:
 
-### F. Governed reference evolution
-
-Activity/Resource exact-code checking is a useful foundation. The next governed-reference layer may add Crew Code and Production Rate only when those fields are explicitly present in an approved reference snapshot and relevant export. Historical cost/rate snapshots must not become current pricing authority by default.
-
-## Next milestone: controlled estimating review package
-
-### Track 1 — product hardening
-
-1. synchronize docs/claims/acceptance criteria;
-2. decide public product naming;
-3. add CSV header scanning parity with XLSX;
-4. split hierarchy context by rule semantics;
-5. improve filtering/navigation for findings and reference exceptions;
-6. define versioned local audit/review package export.
-
-### Track 2 — governed references
-
-1. add reference source metadata: filename, role, revision/label, and SHA-256;
-2. optionally validate exported Crew Code against an explicitly supplied approved reference;
-3. optionally compare Production Rate only where both source and approved reference explicitly provide it;
-4. classify results as review evidence, never automatic correction.
-
-### Track 3 — HeavyBid-readable output gate
-
-Do not implement production output merely because Track 2 passes.
-
-A controlled HeavyBid-readable test artifact must require:
-
-- populated project-specific Bid Item authority;
-- project-specific baseline `Activities_Import` workbook;
-- recorded source/reference identity and immutable hashes;
+- explicitly approved project-specific Bid Item authority;
+- explicitly approved Activity/resource/schema/template authority;
+- recorded immutable source/reference/template identities and fresh SHA-256 revalidation;
 - resolved audit/reference exceptions or explicit estimator dispositions;
 - estimator setup/quantity approval as applicable;
 - commercial approval;
-- versioned output that never overwrites the baseline.
+- create-new-only versioned output that never overwrites the approved baseline; and
+- a post-write manifest and independent real HeavyBid test import.
 
 Always preserve:
 
@@ -91,7 +75,10 @@ Only a real independently reviewed HeavyBid test import can change the import-va
 - direct HeavyBid database/API access;
 - automatic code replacement;
 - automatic BCY/LCY/CCY or ton/tonne conversion;
-- invented Bid Item/Activity/Resource/Crew/Production values;
+- invented Bid Item/Activity/Resource/Crew/Production/Rate/Quantity values;
 - automatic correction of quantities or rates;
-- production import automation;
+- automatic quality/readiness/trend scoring from Review Delta or Review Timeline;
+- inferred calendar chronology or source-currentness from archived evidence;
+- persistent multi-user timeline/history storage;
+- production import automation; and
 - cloud collaboration/authentication until the local review contract is stable.
