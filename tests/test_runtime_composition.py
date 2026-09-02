@@ -44,6 +44,7 @@ class RuntimeCompositionUnitTests(unittest.TestCase):
                 "review_delta_ui",
                 "review_delta_verification_ui",
                 "review_timeline_ui",
+                "review_evidence_navigation",
             ),
         )
 

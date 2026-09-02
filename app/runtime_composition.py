@@ -14,6 +14,7 @@ from bulk_review_ui import install_bulk_review_ui
 from operational_reference_ui import install_operational_reference_ui
 from review_delta_ui import install_review_delta_ui
 from review_delta_verification import install_review_delta_verification_ui
+from review_evidence_navigation import install_review_evidence_navigation
 from review_timeline_ui import install_review_timeline_ui
 from review_view_context import install_review_view_context
 
@@ -28,6 +29,9 @@ _PUBLIC_FEATURES: tuple[tuple[str, Installer], ...] = (
     ("review_delta_ui", install_review_delta_ui),
     ("review_delta_verification_ui", install_review_delta_verification_ui),
     ("review_timeline_ui", install_review_timeline_ui),
+    # Keep this last so it wraps the final composed page renderer without
+    # changing any evidence route's independent verification behavior.
+    ("review_evidence_navigation", install_review_evidence_navigation),
 )
 
 

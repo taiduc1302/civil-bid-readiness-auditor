@@ -93,6 +93,20 @@ Every detail cell is escaped and limited to **500 characters** before rendering.
 
 The page creates no review session and reruns no estimate/reference logic.
 
+## Cross-navigation trust boundary
+
+Review Delta comparison, independent Review Delta verification, and Review Timeline expose a shared navigation block so the reviewer can move among the three read-only evidence views.
+
+Navigation is deliberately presentation-only:
+
+- no uploaded review-package or Delta ZIP bytes are transferred to another route;
+- no verification result, verified flag, package identity, or lineage state is transferred to another route;
+- no hidden form field or browser-side prepopulation carries evidence forward;
+- no review session is created merely by navigating; and
+- the user must re-select evidence at the destination, whose normal route-specific verifier runs independently before that evidence is used.
+
+This prevents a prior successful screen from becoming implicit authority for a later operation. A bundle shown as verified on `/verify-review-delta` is not trusted by `/review-timeline` merely because the user navigated there; Timeline still independently verifies each selected bundle. Likewise, Review Delta comparison continues to independently verify its selected review-package inputs.
+
 ## Safety boundary
 
 The model explicitly preserves:
@@ -126,6 +140,7 @@ Operational Crew Code / Production Rate evidence is temporary-session evidence a
 
 - no calendar/timestamp inference;
 - no persistent timeline database;
+- no persistence or cross-route transfer of uploads/verification state;
 - no source-file restoration or current-source verification;
 - no estimate/reference rerun;
 - no automatic review-state changes;
