@@ -17,6 +17,7 @@ TIMELINE_MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
 TIMELINE_MAX_REQUEST_BYTES = (
     MAX_TIMELINE_DELTAS * MAX_DELTA_EXPORT_BYTES + TIMELINE_MULTIPART_OVERHEAD_BYTES
 )
+MAX_TIMELINE_DETAIL_CELL_CHARS = 500
 
 
 def _timeline_multipart_message(handler: Any):
@@ -83,6 +84,129 @@ def _counts(counts: dict[str, Any], keys: tuple[str, ...]) -> str:
     return " | ".join(f"{key}: {int(counts.get(key, 0))}" for key in keys)
 
 
+def _cell(value: Any) -> str:
+    if isinstance(value, (list, tuple)):
+        text = ", ".join(str(item) for item in value)
+    elif value is None:
+        text = ""
+    else:
+        text = str(value)
+    if len(text) > MAX_TIMELINE_DETAIL_CELL_CHARS:
+        text = text[: MAX_TIMELINE_DETAIL_CELL_CHARS - 1] + "…"
+    return html.escape(text)
+
+
+def _pair_summary(value: Any, fields: tuple[str, ...]) -> str:
+    item = value if isinstance(value, dict) else {}
+    parts = [f"{field}={item.get(field, '')}" for field in fields if item.get(field, "") not in (None, "")]
+    return _cell("; ".join(parts) or "—")
+
+
+def _detail_note(category: dict[str, Any], label: str) -> str:
+    shown = int(category.get("shown", 0))
+    total = int(category.get("changed_total", 0))
+    omitted = int(category.get("omitted", 0))
+    if omitted:
+        return (
+            f"<p class='visually-helpful'>Showing {shown} of {total} verified changed {html.escape(label)} rows; "
+            f"{omitted} additional verified changed rows are omitted from this browser preview.</p>"
+        )
+    return f"<p class='visually-helpful'>Showing all {shown} verified changed {html.escape(label)} rows.</p>"
+
+
+def _finding_detail_table(category: dict[str, Any]) -> str:
+    rows = category.get("rows", [])
+    if not rows:
+        table = "<p>No changed finding rows are present in this verified transition.</p>"
+    else:
+        body = "".join(
+            "<tr>"
+            f"<td>{_cell(item.get('change_type', ''))}</td>"
+            f"<td>{_cell((item.get('anchor') or {}).get('sheet', ''))}</td>"
+            f"<td>{_cell((item.get('anchor') or {}).get('row', ''))}</td>"
+            f"<td>{_cell((item.get('anchor') or {}).get('rule_id', ''))}</td>"
+            f"<td>{_cell((item.get('anchor') or {}).get('field', ''))}</td>"
+            f"<td>{_cell(item.get('evidence_fields_changed', []))}</td>"
+            f"<td>{_cell(item.get('review_fields_changed', []))}</td>"
+            f"<td>{_pair_summary(item.get('before'), ('severity', 'evidence', 'message'))}</td>"
+            f"<td>{_pair_summary(item.get('after'), ('severity', 'evidence', 'message'))}</td>"
+            f"<td>{_pair_summary(item.get('before_review'), ('status', 'reason'))}</td>"
+            f"<td>{_pair_summary(item.get('after_review'), ('status', 'reason'))}</td>"
+            "</tr>"
+            for item in rows
+        )
+        table = (
+            "<div style='overflow:auto'><table><caption>Changed finding evidence from the verified Delta bundle</caption>"
+            "<thead><tr><th>Change</th><th>Sheet</th><th>Row</th><th>Rule</th><th>Field</th>"
+            "<th>Evidence fields changed</th><th>Review fields changed</th><th>Before evidence</th><th>After evidence</th>"
+            f"<th>Before review</th><th>After review</th></tr></thead><tbody>{body}</tbody></table></div>"
+        )
+    return table + _detail_note(category, "finding")
+
+
+def _reference_detail_table(category: dict[str, Any]) -> str:
+    rows = category.get("rows", [])
+    if not rows:
+        table = "<p>No changed governed-reference rows are present in this verified transition.</p>"
+    else:
+        body = "".join(
+            "<tr>"
+            f"<td>{_cell(item.get('change_type', ''))}</td>"
+            f"<td>{_cell((item.get('anchor') or {}).get('reference_type', ''))}</td>"
+            f"<td>{_cell((item.get('anchor') or {}).get('sheet', ''))}</td>"
+            f"<td>{_cell((item.get('anchor') or {}).get('source_row', ''))}</td>"
+            f"<td>{_cell((item.get('anchor') or {}).get('code', ''))}</td>"
+            f"<td>{_cell(item.get('fields_changed', []))}</td>"
+            f"<td>{_pair_summary(item.get('before'), ('status', 'reference_code', 'reference_unit', 'message'))}</td>"
+            f"<td>{_pair_summary(item.get('after'), ('status', 'reference_code', 'reference_unit', 'message'))}</td>"
+            "</tr>"
+            for item in rows
+        )
+        table = (
+            "<div style='overflow:auto'><table><caption>Changed governed-reference evidence from the verified Delta bundle</caption>"
+            "<thead><tr><th>Change</th><th>Type</th><th>Sheet</th><th>Row</th><th>Code</th><th>Fields changed</th>"
+            f"<th>Before</th><th>After</th></tr></thead><tbody>{body}</tbody></table></div>"
+        )
+    return table + _detail_note(category, "reference")
+
+
+def _metadata_detail_table(category: dict[str, Any]) -> str:
+    rows = category.get("rows", [])
+    if not rows:
+        table = "<p>No changed reference-metadata rows are present in this verified transition.</p>"
+    else:
+        body = "".join(
+            "<tr>"
+            f"<td>{_cell(item.get('change_type', ''))}</td>"
+            f"<td>{_cell(item.get('role', ''))}</td>"
+            f"<td>{_cell(item.get('fields_changed', []))}</td>"
+            f"<td>{_pair_summary(item.get('before'), ('filename', 'revision', 'size_bytes', 'sha256', 'authority_status'))}</td>"
+            f"<td>{_pair_summary(item.get('after'), ('filename', 'revision', 'size_bytes', 'sha256', 'authority_status'))}</td>"
+            "</tr>"
+            for item in rows
+        )
+        table = (
+            "<div style='overflow:auto'><table><caption>Changed reference metadata from the verified Delta bundle</caption>"
+            "<thead><tr><th>Change</th><th>Role</th><th>Fields changed</th><th>Before</th><th>After</th></tr></thead>"
+            f"<tbody>{body}</tbody></table></div>"
+        )
+    return table + _detail_note(category, "reference metadata")
+
+
+def _transition_details(item: dict[str, Any], index: int) -> str:
+    preview = item.get("detail_preview") if isinstance(item.get("detail_preview"), dict) else {}
+    return f"""<details class='card'>
+<summary><strong>Transition {index}</strong> — {_cell(item.get('delta_filename', ''))} — bounded verified evidence details</summary>
+<div class='notice'><strong>Evidence details only.</strong> Rows below come only from the already verified Delta preview. They do not imply improvement, regression, correctness, approval, bid readiness, or HeavyBid import validity.</div>
+<h4>Finding changes</h4>
+{_finding_detail_table(preview.get('finding_changes', {}))}
+<h4>Governed-reference changes</h4>
+{_reference_detail_table(preview.get('reference_changes', {}))}
+<h4>Reference-metadata changes</h4>
+{_metadata_detail_table(preview.get('reference_metadata_changes', {}))}
+</details>"""
+
+
 def timeline_page_body(result: dict[str, Any] | None = None, error: str = "") -> str:
     alert = f"<div class='error'><strong>Timeline failed.</strong> {html.escape(error)}</div>" if error else ""
     output = ""
@@ -109,6 +233,10 @@ def timeline_page_body(result: dict[str, Any] | None = None, error: str = "") ->
             "</tr>"
             for index, item in enumerate(result["transitions"], start=1)
         )
+        detail_blocks = "".join(
+            _transition_details(item, index)
+            for index, item in enumerate(result["transitions"], start=1)
+        )
         source_notice = ""
         if not result.get("same_source_filename_across_chain"):
             source_notice = (
@@ -124,6 +252,9 @@ def timeline_page_body(result: dict[str, Any] | None = None, error: str = "") ->
 <div style='overflow:auto'><table><caption>Structurally ordered review-package snapshot chain</caption><thead><tr><th>#</th><th>Package SHA-256</th><th>Recorded package filename alias(es)</th><th>Source filename</th><th>Rows reviewed</th><th>Source session mode</th></tr></thead><tbody>{snapshot_rows}</tbody></table></div>
 <h3>Ordered evidence transitions</h3>
 <div style='overflow:auto'><table><caption>Per-transition archived evidence counts; counts are descriptive, not a trend score</caption><thead><tr><th>#</th><th>Delta bundle</th><th>Delta SHA-256</th><th>Finding changes</th><th>Reference changes</th><th>Reference metadata changes</th></tr></thead><tbody>{transition_rows}</tbody></table></div>
+<h3>Bounded transition evidence details</h3>
+<p class='visually-helpful'>UNCHANGED rows remain represented in the verified count table above but are intentionally omitted from the detail previews below. Omission is a display choice only and is not an improvement judgement.</p>
+{detail_blocks}
 <p class='visually-helpful'>Every input Delta bundle was independently verified before chain construction. The model creates no review session, reruns no audit/reference logic, and does not reconstruct session-only Operational Crew/Production evidence.</p>
 </section>"""
 
