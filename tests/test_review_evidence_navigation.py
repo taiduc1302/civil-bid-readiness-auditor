@@ -39,7 +39,7 @@ class ReviewEvidenceNavigationTests(unittest.TestCase):
         conn.close()
         return status, payload
 
-    def test_navigation_block_has_all_routes_and_explicit_no-carry_boundary(self):
+    def test_navigation_block_has_all_routes_and_explicit_no_carry_boundary(self):
         block = review_evidence_navigation("Review Delta")
         self.assertIn("/compare-review-packages", block)
         self.assertIn("/verify-review-delta", block)
