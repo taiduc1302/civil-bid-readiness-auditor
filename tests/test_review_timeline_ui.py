@@ -13,7 +13,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 
-from audit_engine import audit, parse_upload
+from audit_engine import InputError, audit, parse_upload
 from finding_review import default_dispositions
 from review_delta import compare_review_packages
 from review_delta_export import MAX_DELTA_EXPORT_BYTES, build_review_delta_export
@@ -74,6 +74,18 @@ class ReviewTimelineUiTests(unittest.TestCase):
         d["dispositions"][3] = {"status": "Accepted", "reason": "D"}
         return tuple(build_review_package(item)[0] for item in (a, b, c, d))
 
+    def long_chain_packages(self):
+        base = self.base_session()
+        snapshots = [base]
+        for index in range(1, 11):
+            item = copy.deepcopy(base)
+            item["dispositions"][1] = {
+                "status": "Reviewed",
+                "reason": f"verified transition fixture {index}",
+            }
+            snapshots.append(item)
+        return tuple(build_review_package(item)[0] for item in snapshots)
+
     def delta(self, earlier_name, earlier, later_name, later):
         result = compare_review_packages(earlier_name, earlier, later_name, later)
         return build_review_delta_export(result)[0]
@@ -95,6 +107,15 @@ class ReviewTimelineUiTests(unittest.TestCase):
             "Content-Type": f'multipart/form-data; boundary="{boundary}"',
             "Content-Length": str(len(body)),
         }
+
+    def parser_handler(self, *, content_type, content_length, payload=b""):
+        return SimpleNamespace(
+            headers={
+                "Content-Type": content_type,
+                "Content-Length": content_length,
+            },
+            rfile=io.BytesIO(payload),
+        )
 
     def test_home_and_get_page_are_available_without_session(self):
         status, _, home = self.request("GET", "/")
@@ -122,15 +143,64 @@ class ReviewTimelineUiTests(unittest.TestCase):
             "abc\r\n"
             f"--{boundary}--\r\n"
         ).encode()
-        handler = SimpleNamespace(
-            headers={
-                "Content-Type": f'multipart/form-data; boundary="{boundary}"',
-                "Content-Length": str(len(body)),
-            },
-            rfile=io.BytesIO(body),
+        handler = self.parser_handler(
+            content_type=f'multipart/form-data; boundary="{boundary}"',
+            content_length=str(len(body)),
+            payload=body,
         )
         message = _timeline_multipart_message(handler)
         self.assertTrue(message.is_multipart())
+
+    def test_timeline_multipart_rejects_malformed_aggregate_envelopes_before_evidence_use(self):
+        boundary = "----timeline-malformed-test"
+        content_type = f'multipart/form-data; boundary="{boundary}"'
+
+        with self.assertRaisesRegex(InputError, "must use multipart form data"):
+            _timeline_multipart_message(
+                self.parser_handler(
+                    content_type="application/octet-stream",
+                    content_length="3",
+                    payload=b"abc",
+                )
+            )
+
+        with self.assertRaisesRegex(InputError, "invalid Content-Length"):
+            _timeline_multipart_message(
+                self.parser_handler(
+                    content_type=content_type,
+                    content_length="not-an-integer",
+                )
+            )
+
+        with self.assertRaisesRegex(InputError, "exceeds the local"):
+            _timeline_multipart_message(
+                self.parser_handler(
+                    content_type=content_type,
+                    content_length=str(TIMELINE_MAX_REQUEST_BYTES + 1),
+                )
+            )
+
+        declared = 100
+        with self.assertRaisesRegex(InputError, "ended before its declared Content-Length"):
+            _timeline_multipart_message(
+                self.parser_handler(
+                    content_type=content_type,
+                    content_length=str(declared),
+                    payload=b"short",
+                )
+            )
+
+        malformed = b"this is not multipart form data"
+        with self.assertRaisesRegex(InputError, "malformed multipart form data"):
+            _timeline_multipart_message(
+                self.parser_handler(
+                    content_type=content_type,
+                    content_length=str(len(malformed)),
+                    payload=malformed,
+                )
+            )
+
+        self.assertEqual(SESSIONS, {})
 
     def test_detail_cells_are_escaped_and_character_bounded(self):
         rendered = _cell("<tag>" + "x" * (MAX_TIMELINE_DETAIL_CELL_CHARS + 50))
@@ -170,6 +240,30 @@ class ReviewTimelineUiTests(unittest.TestCase):
         self.assertIn(b"UNCHANGED rows remain represented", page)
         self.assertIn(b"Showing all 1 verified changed finding rows", page)
         self.assertIn(b"do not imply improvement, regression", page)
+        self.assertEqual(SESSIONS, {})
+
+    def test_ten_transition_chain_succeeds_out_of_order_without_session(self):
+        packages = self.long_chain_packages()
+        uploads = []
+        for index in range(10):
+            payload = self.delta(
+                f"snapshot-{index}.zip",
+                packages[index],
+                f"snapshot-{index + 1}.zip",
+                packages[index + 1],
+            )
+            uploads.append((f"transition-{index:02d}.delta.zip", payload))
+
+        body, headers = self.multipart(list(reversed(uploads)))
+        status, _, page = self.request("POST", "/review-timeline", body, headers)
+        self.assertEqual(status, 200)
+        self.assertIn(b"Snapshots:</strong> 11", page)
+        self.assertIn(b"Transitions:</strong> 10", page)
+        self.assertIn(b"exact package SHA-256 chain verified", page)
+        first = page.find(b"transition-00.delta.zip")
+        last = page.find(b"transition-09.delta.zip")
+        self.assertGreater(first, -1)
+        self.assertGreater(last, first)
         self.assertEqual(SESSIONS, {})
 
     def test_disconnected_or_invalid_inputs_fail_safely_without_session(self):
