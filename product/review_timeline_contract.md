@@ -12,6 +12,8 @@ One local request accepts **2–10** `civil-estimate-review-delta-export` v1 ZIP
 
 Every bundle is independently processed through the existing strict `verify_review_delta_export()` contract before any lineage or transition counts are used. Uploaded bytes are held only for the request and are not added to `SESSIONS` or written to disk by the application.
 
+Each Delta ZIP is bounded by the Delta verifier's existing **50 MB** compressed-bundle limit. Because a valid Timeline request may contain several valid Delta bundles, `/review-timeline` uses a dedicated multipart parser with an aggregate bound of **502 MB including form overhead** instead of the legacy general **26 MB** upload cap. This larger request envelope does not relax the Delta verifier's per-bundle/member/uncompressed limits: each bundle must still pass independent verification before it contributes any evidence.
+
 ## Ordering authority
 
 Upload order, Delta filenames, review-package filenames, source filenames, filesystem timestamps, and inferred dates are not ordering authorities.
@@ -40,7 +42,8 @@ The supplied transitions must resolve to exactly one connected acyclic linear ch
 The builder fails closed for:
 
 - fewer than 2 or more than 10 Delta bundles;
-- any Delta bundle that fails independent verification;
+- an individual Delta bundle above its supported 50 MB compressed size or any bundle that otherwise fails independent verification;
+- an aggregate Timeline request above its bounded multipart envelope;
 - duplicate Delta-bundle bytes/SHA-256;
 - duplicate `Earlier -> Later` transition edges;
 - a self-transition whose Earlier and Later package SHA-256 are the same;
