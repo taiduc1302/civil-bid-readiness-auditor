@@ -11,7 +11,8 @@ The current product is a local-first deterministic **review** system, not a bid-
 5. deterministic portable review-package export, strict integrity + semantic verification, bounded read-only preview, and acknowledged archived-review continuation;
 6. Review Delta comparison, deterministic portable Delta export, and independent Delta-export verification;
 7. neutral Review Timeline reconstruction from 2–10 independently verified Delta bundles using exact review-package SHA-256 continuity only, with bounded changed-evidence detail disclosure from verifier-approved previews;
-8. controlled output eligibility planning and pre-write hash revalidation, without a HeavyBid candidate writer.
+8. safe read-only cross-navigation among Review Delta, Delta verification, and Review Timeline that carries no uploads or verification/lineage state between routes; and
+9. controlled output eligibility planning and pre-write hash revalidation, without a HeavyBid candidate writer.
 
 All layers remain review aids. None certifies estimate correctness, bid readiness, reference authority, commercial approval, or production HeavyBid import safety.
 
@@ -27,6 +28,7 @@ Review Timeline is part of the public local runtime. It:
 - renders bounded escaped snapshot/transition evidence;
 - exposes bounded per-transition changed-evidence details only from `verify_review_delta_export()` preview rows: up to 25 findings, 25 governed-reference checks, and 10 reference-metadata rows per transition, with explicit omission counts and 500-character cell bounds;
 - keeps `UNCHANGED` rows in verified count summaries while omitting them from detail previews without interpreting that omission as improvement;
+- cross-links Review Delta comparison, independent Delta verification, and Review Timeline while explicitly requiring evidence to be re-selected and independently verified at each destination;
 - creates no review session and reruns no estimate/reference logic; and
 - uses a dedicated bounded multipart path compatible with the Delta verifier's 50 MB per-bundle limit rather than inheriting the legacy 26 MB request cap.
 
@@ -39,7 +41,7 @@ It is evidence chronology only. It does not infer calendar dates, source currenc
 Preferred next increments stay read-only and work only from already verified evidence:
 
 1. **Delivered:** bounded per-transition evidence-detail disclosure from independently verified Delta preview rows, with explicit row/cell bounds and unchanged no-session/no-inference semantics;
-2. improve cross-navigation among Review Delta verification and Review Timeline without persisting uploads, carrying unverified evidence, or inventing chronology;
+2. **Delivered:** safe cross-navigation among Review Delta verification and Review Timeline without persisting uploads, carrying verification/lineage state, or inventing chronology;
 3. add focused regression fixtures for larger valid multi-bundle timeline requests and malformed aggregate requests without weakening per-bundle verifier limits;
 4. keep any future timeline export deterministic and evidence-only; do not introduce timestamps, generated narratives, or trend scoring unless a separate explicit contract is approved.
 
