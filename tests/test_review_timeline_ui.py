@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import copy
 import http.client
+import io
 import re
 import sys
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
@@ -14,8 +16,9 @@ sys.path.insert(0, str(ROOT / "app"))
 from audit_engine import audit, parse_upload
 from finding_review import default_dispositions
 from review_delta import compare_review_packages
-from review_delta_export import build_review_delta_export
+from review_delta_export import MAX_DELTA_EXPORT_BYTES, build_review_delta_export
 from review_package import build_review_package
+from review_timeline_ui import TIMELINE_MAX_REQUEST_BYTES, _timeline_multipart_message
 from server import Handler, SESSIONS, ThreadingHTTPServer
 
 
@@ -98,7 +101,31 @@ class ReviewTimelineUiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"Build Review Timeline", page)
         self.assertIn(b"multiple required", page)
+        self.assertIn(b"Each Delta evidence ZIP is limited to 50 MB", page)
         self.assertEqual(SESSIONS, {})
+
+    def test_timeline_multipart_has_dedicated_aggregate_limit_above_legacy_26_mb(self):
+        self.assertEqual(MAX_DELTA_EXPORT_BYTES, 50 * 1024 * 1024)
+        self.assertGreater(TIMELINE_MAX_REQUEST_BYTES, 26 * 1024 * 1024)
+        self.assertGreaterEqual(TIMELINE_MAX_REQUEST_BYTES, 10 * MAX_DELTA_EXPORT_BYTES)
+
+        boundary = "----timeline-parser-test"
+        body = (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="delta_export"; filename="a.zip"\r\n'
+            "Content-Type: application/zip\r\n\r\n"
+            "abc\r\n"
+            f"--{boundary}--\r\n"
+        ).encode()
+        handler = SimpleNamespace(
+            headers={
+                "Content-Type": f'multipart/form-data; boundary="{boundary}"',
+                "Content-Length": str(len(body)),
+            },
+            rfile=io.BytesIO(body),
+        )
+        message = _timeline_multipart_message(handler)
+        self.assertTrue(message.is_multipart())
 
     def test_reversed_upload_order_builds_sha_chain_with_escaped_labels_and_no_session(self):
         a, b, c, _d = self.packages()
