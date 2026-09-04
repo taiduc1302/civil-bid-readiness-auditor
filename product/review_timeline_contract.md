@@ -136,6 +136,12 @@ Fewer findings, more reviewed dispositions, fewer reference exceptions, or any b
 
 Operational Crew Code / Production Rate evidence is temporary-session evidence and is outside review-package v1 and Delta-export v1. Review Timeline therefore does not reconstruct, infer, summarize, or invent operational evidence.
 
+## Export boundary
+
+`product/review_timeline_export_contract.md` defines a separate deterministic evidence-only v1 design contract for any future portable Timeline export. That contract requires fresh independent Delta verification, the existing fail-closed linear-chain rules, and complete verified evidence rather than bounded browser-preview rows.
+
+The export is **not implemented**. The current runtime has no Timeline export builder, verifier, route, download control, persistence, or accepted Timeline-export input. Approving the contract does not turn a displayed Timeline into portable authority and does not relax any safety boundary in this document.
+
 ## Explicit non-goals
 
 - no calendar/timestamp inference;
