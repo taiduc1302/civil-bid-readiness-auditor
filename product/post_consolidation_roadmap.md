@@ -44,7 +44,7 @@ Preferred next increments stay read-only and work only from already verified evi
 1. **Delivered:** bounded per-transition evidence-detail disclosure from independently verified Delta preview rows, with explicit row/cell bounds and unchanged no-session/no-inference semantics;
 2. **Delivered:** safe cross-navigation among Review Delta verification and Review Timeline without persisting uploads, carrying verification/lineage state, or inventing chronology;
 3. **Delivered:** focused regression fixtures for a valid 10-transition chain and malformed/oversized aggregate requests without weakening per-bundle verifier limits;
-4. keep any future timeline export deterministic and evidence-only; do not introduce timestamps, generated narratives, or trend scoring unless a separate explicit contract is approved.
+4. **Contract delivered; implementation deferred:** `review_timeline_export_contract.md` defines a separate deterministic evidence-only v1 ZIP and future independent-verification boundary. No exporter, verifier, route, UI control, timestamp, generated narrative, trend scoring, or persistence is implemented.
 
 ### P2 — portable operational evidence only under a new version contract
 

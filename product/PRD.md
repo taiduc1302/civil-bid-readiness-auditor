@@ -44,13 +44,14 @@ It is deliberately a **review** product, not a bid-readiness certification syste
 34. Temporary-session concurrency hardening for the local `ThreadingHTTPServer`: one in-memory lock per session token serializes state-sensitive read/validate/write operations while different tokens remain independently concurrent. Active lookup refreshes a 30-minute idle timeout, expiry skips a session while an active request holds its lock, and one-time bulk plans cannot be applied twice by concurrent requests.
 35. Explicit deterministic public-runtime composition: one startup composer invokes the idempotent accessibility, bulk-review, review-view-context, operational-reference, archived-review, Review Delta, Review Delta verification, and Review Timeline feature installers. Content modules such as onboarding are side-effect free, and review-only renderer augmentation uses stable internal page identity rather than user-visible display-title strings.
 36. Neutral verified Review Timeline: `/review-timeline` accepts 2–10 independently verified portable Review Delta v1 ZIPs and reconstructs one connected acyclic linear evidence chain only from exact Earlier→Later review-package SHA-256 continuity. Package filenames remain descriptive aliases only; duplicate/conflicting/branching/merging/cyclic/disconnected lineage fails closed. Snapshot and transition labels are escaped, no review session is created, no audit/reference logic is rerun, and no calendar/source-currency/quality/improvement/readiness/HeavyBid-import inference is made. The Timeline uses a dedicated bounded multipart path compatible with the Delta verifier's 50 MB per-bundle limit rather than the legacy 26 MB single-request cap.
+37. Contract-only Review Timeline evidence export definition: a future `civil-estimate-review-timeline-export` v1 ZIP is specified as deterministic, evidence-only, derived from fresh independent Delta verification plus the existing linear-chain rules, and independently verifiable. The contract requires complete verified rows rather than bounded browser previews and excludes timestamps, generated narratives, scores, persistence, source bytes/restoration/reruns, Operational Crew/Production reconstruction, and HeavyBid behavior. No exporter, verifier, route, or UI control is built.
 
 ## Next product milestone
 
 ### P1 — review UX hardening
 
 - archived human-review continuation is built; any future **true estimate/source restoration or re-audit** requires a separate package/version/migration/ownership contract that supplies and verifies the original source bytes rather than treating archived review evidence as current input;
-- Review Delta comparison, portable export, independent portable-export verification, and the neutral multi-snapshot Review Timeline are built; any future persistent history, calendar chronology, trend narrative, or scoring must use a separate explicit contract and must not convert evidence drift into an automatic quality/readiness judgement;
+- Review Delta comparison, portable export, independent portable-export verification, and the neutral multi-snapshot Review Timeline are built; a separate deterministic evidence-only Timeline export v1 contract is defined, but its exporter/verifier/runtime surface remains unbuilt, and no future persistent history, calendar chronology, generated narrative, or scoring is authorized by that contract;
 - evaluate additional fictional first-run guidance only when it demonstrates already-built behavior rather than implying reference authority or automatic decisions;
 - keep bulk actions limited to explicit selections and preserve one-time preview/revalidation semantics; do not add select-all or implicit view-based scope.
 
@@ -76,7 +77,7 @@ The writer must:
 
 ## Deferred / not built
 
-Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, true source-file/session restoration or deterministic re-audit from a review package, portable-package operational Crew/Production evidence, persistent timeline/history storage, calendar/timestamp inference, automatic Review Delta/Timeline quality or trend scoring, direct HeavyBid database/API access, and production import automation.
+Cloud collaboration, authentication, document/OCR extraction, AI summaries, market benchmarking, automatic corrections, true source-file/session restoration or deterministic re-audit from a review package, portable-package operational Crew/Production evidence, Review Timeline export implementation/verification, persistent timeline/history storage, calendar/timestamp inference, automatic Review Delta/Timeline quality or trend scoring, direct HeavyBid database/API access, and production import automation.
 
 ## Non-goals and safeguards
 
