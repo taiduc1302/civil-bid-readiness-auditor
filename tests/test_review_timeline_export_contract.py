@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "product" / "review_timeline_export_contract.md"
+DISTRIBUTION_CONTRACT = ROOT / "product" / "review_timeline_export_distribution_contract.md"
 
 
 class ReviewTimelineExportContractTests(unittest.TestCase):
@@ -65,18 +66,34 @@ class ReviewTimelineExportContractTests(unittest.TestCase):
         self.assertIn("No Timeline export can be a controlled-output eligibility decision", text)
         self.assertIn("Bid Item, Activity, Resource, Crew, Production, Rate, or Quantity", text)
 
-    def test_core_implementation_does_not_create_browser_export_surface(self):
+    def test_core_remains_library_only_and_distribution_has_separate_fail_closed_boundary(self):
         core = ROOT / "app" / "review_timeline_export.py"
+        ui = ROOT / "app" / "review_timeline_export_ui.py"
         self.assertTrue(core.exists())
-        source = core.read_text(encoding="utf-8")
-        self.assertIn("def build_review_timeline_export", source)
-        self.assertIn("def verify_review_timeline_export", source)
+        self.assertTrue(ui.exists())
+        self.assertTrue(DISTRIBUTION_CONTRACT.exists())
+
+        core_source = core.read_text(encoding="utf-8")
+        ui_source = ui.read_text(encoding="utf-8")
+        distribution = DISTRIBUTION_CONTRACT.read_text(encoding="utf-8")
+        self.assertIn("def build_review_timeline_export", core_source)
+        self.assertIn("def verify_review_timeline_export", core_source)
+        self.assertNotIn("/export-review-timeline", core_source)
+
+        self.assertIn('EXPORT_ROUTE = "/export-review-timeline"', ui_source)
+        self.assertIn("_read_delta_exports(message)", ui_source)
+        self.assertIn("verify_review_timeline_export(content)", ui_source)
+        self.assertLess(
+            ui_source.index("verify_review_timeline_export(content)"),
+            ui_source.index("self.wfile.write(content)"),
+        )
+        self.assertIn("There is no Timeline-export ZIP upload/ingestion/continuation/restoration route", distribution)
+        self.assertIn("The route must not accept, copy, infer, or carry from `/review-timeline`", distribution)
 
         app_source = "\n".join(
             path.read_text(encoding="utf-8")
             for path in sorted((ROOT / "app").glob("*.py"))
         )
-        self.assertNotIn("/export-review-timeline", app_source)
         self.assertNotIn("name='timeline_export'", app_source)
         self.assertNotIn('name="timeline_export"', app_source)
 
