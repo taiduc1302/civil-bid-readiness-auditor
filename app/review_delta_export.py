@@ -55,7 +55,7 @@ def _safe_csv(value: Any) -> str:
 
 def _write_csv(fields: list[str], rows: Iterable[dict[str, Any]]) -> bytes:
     output = io.StringIO(newline="")
-    writer = csv.DictWriter(output, fieldnames=fields, lineterminator="\r\n")
+    writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
     for row in rows:
         writer.writerow({field: _safe_csv(row.get(field, "")) for field in fields})
@@ -172,6 +172,7 @@ def _readme_bytes() -> bytes:
 
 
 def delta_export_manifest(result: dict[str, Any]) -> dict[str, Any]:
+    """Return the small portable-export contract without duplicating full evidence rows."""
     return {
         "export_format": DELTA_EXPORT_FORMAT,
         "export_version": DELTA_EXPORT_VERSION,
@@ -314,6 +315,7 @@ def _write_member(book: zipfile.ZipFile, name: str, data: bytes) -> None:
 
 
 def build_review_delta_export(result: dict[str, Any]) -> tuple[bytes, str]:
+    """Create byte-deterministic portable Review Delta evidence from one comparison result."""
     _validate_comparison_result(result)
     members: dict[str, bytes] = {
         "manifest.json": _json_bytes(delta_export_manifest(result)),
@@ -358,7 +360,7 @@ def _read_json(book: zipfile.ZipFile, name: str) -> dict[str, Any]:
 
 
 def verify_review_delta_export(data: bytes, *, include_canonical: bool = False) -> dict[str, Any]:
-    """Verify ZIP structure, hashes, and semantics in memory.
+    """Verify ZIP structure, hashes, and deterministic semantic agreement in memory.
 
     ``include_canonical`` exposes the already-verified full comparison only to trusted
     in-process callers such as the Timeline exporter. It does not skip or relax any
@@ -433,13 +435,18 @@ def verify_review_delta_export(data: bytes, *, include_canonical: bool = False) 
         _validate_comparison_result(comparison)
         if manifest.get("export_format") != DELTA_EXPORT_FORMAT or manifest.get("export_version") != DELTA_EXPORT_VERSION:
             raise ValueError("Review Delta export manifest identity is unsupported.")
-        if manifest != delta_export_manifest(comparison):
+        expected_manifest = delta_export_manifest(comparison)
+        if manifest != expected_manifest:
             raise ValueError("Review Delta export manifest does not match the full comparison evidence.")
-        expected_csvs = {
-            "finding_changes.csv": _finding_csv(comparison),
-            "reference_changes.csv": _reference_csv(comparison),
-            "reference_metadata_changes.csv": _metadata_csv(comparison),
-        }
+
+        try:
+            expected_csvs = {
+                "finding_changes.csv": _finding_csv(comparison),
+                "reference_changes.csv": _reference_csv(comparison),
+                "reference_metadata_changes.csv": _metadata_csv(comparison),
+            }
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError("Review Delta export contains malformed comparison evidence.") from exc
         for name, expected_bytes in expected_csvs.items():
             if _read_member(book, name) != expected_bytes:
                 raise ValueError(f"Review Delta export {name} does not match the full comparison evidence.")
