@@ -65,28 +65,20 @@ class ReviewTimelineExportContractTests(unittest.TestCase):
         self.assertIn("No Timeline export can be a controlled-output eligibility decision", text)
         self.assertIn("Bid Item, Activity, Resource, Crew, Production, Rate, or Quantity", text)
 
-    def test_contract_only_increment_has_no_runtime_export_surface(self):
-        self.assertFalse((ROOT / "app" / "review_timeline_export.py").exists())
+    def test_core_implementation_does_not_create_browser_export_surface(self):
+        core = ROOT / "app" / "review_timeline_export.py"
+        self.assertTrue(core.exists())
+        source = core.read_text(encoding="utf-8")
+        self.assertIn("def build_review_timeline_export", source)
+        self.assertIn("def verify_review_timeline_export", source)
 
         app_source = "\n".join(
             path.read_text(encoding="utf-8")
             for path in sorted((ROOT / "app").glob("*.py"))
         )
         self.assertNotIn("/export-review-timeline", app_source)
-        self.assertNotIn("build_review_timeline_export", app_source)
-        self.assertNotIn("verify_review_timeline_export", app_source)
-
-        synchronized_boundaries = {
-            "product/PRD.md": "No exporter, verifier, route, or UI control is built.",
-            "product/acceptance_criteria.md": "no exporter, verifier, route, UI control",
-            "product/post_consolidation_roadmap.md": "No exporter, verifier, route, UI control",
-            "product/review_timeline_contract.md": "The export is **not implemented**.",
-            "CLAIMS_LEDGER.md": "this is a contract claim only",
-            "qa/known_limitations.md": "no Timeline export builder, verifier, route",
-        }
-        for relative_path, required_boundary in synchronized_boundaries.items():
-            text = (ROOT / relative_path).read_text(encoding="utf-8")
-            self.assertIn(required_boundary, text, relative_path)
+        self.assertNotIn("name='timeline_export'", app_source)
+        self.assertNotIn('name="timeline_export"', app_source)
 
 
 if __name__ == "__main__":

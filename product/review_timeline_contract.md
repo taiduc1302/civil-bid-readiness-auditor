@@ -138,9 +138,11 @@ Operational Crew Code / Production Rate evidence is temporary-session evidence a
 
 ## Export boundary
 
-`product/review_timeline_export_contract.md` defines a separate deterministic evidence-only v1 design contract for any future portable Timeline export. That contract requires fresh independent Delta verification, the existing fail-closed linear-chain rules, and complete verified evidence rather than bounded browser-preview rows.
+`product/review_timeline_export_contract.md` defines the separate deterministic evidence-only `civil-estimate-review-timeline-export` v1 contract. Its **in-memory builder and independent verifier core are now implemented**, and creation uses fresh strict Delta verification plus complete verified evidence rather than bounded browser-preview rows.
 
-The export is **not implemented**. The current runtime has no Timeline export builder, verifier, route, download control, persistence, or accepted Timeline-export input. Approving the contract does not turn a displayed Timeline into portable authority and does not relax any safety boundary in this document.
+This does **not** make the browser Timeline portable authority. There is still no browser Timeline-export route, download control, accepted Timeline-export input route, persistence, or transfer of preview/verification state between routes. The library core creates no review session, restores no source files, reruns no audit/reference logic, reconstructs no Operational Crew/Production evidence, and makes no chronology/quality/readiness/HeavyBid inference.
+
+Any later browser distribution/import increment must be separately reviewed and must re-select and freshly verify its own inputs rather than inheriting state from `/review-timeline`.
 
 ## Explicit non-goals
 
@@ -152,5 +154,6 @@ The export is **not implemented**. The current runtime has no Timeline export bu
 - no automatic review-state changes;
 - no trend/quality/readiness score;
 - no AI better/worse narrative;
+- no browser Timeline-export distribution/import surface in the current increment;
 - no HeavyBid writer/import action;
 - no invented Bid Item, Activity, Resource, Crew, Production, Rate, or Quantity values.

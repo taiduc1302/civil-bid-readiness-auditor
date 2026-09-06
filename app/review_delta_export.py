@@ -359,8 +359,13 @@ def _read_json(book: zipfile.ZipFile, name: str) -> dict[str, Any]:
     return value
 
 
-def verify_review_delta_export(data: bytes) -> dict[str, Any]:
-    """Verify ZIP structure, hashes, and deterministic semantic agreement in memory."""
+def verify_review_delta_export(data: bytes, *, include_canonical: bool = False) -> dict[str, Any]:
+    """Verify ZIP structure, hashes, and deterministic semantic agreement in memory.
+
+    ``include_canonical`` exposes the already-verified full comparison only to trusted
+    in-process callers such as the Timeline exporter. It does not skip or relax any
+    verification step and remains opt-in so browser previews stay bounded.
+    """
     payload = bytes(data)
     if not payload:
         raise ValueError("Review Delta export is blank.")
@@ -390,6 +395,8 @@ def verify_review_delta_export(data: bytes) -> dict[str, Any]:
 
         total_uncompressed = 0
         for info in infos:
+            if info.flag_bits & 0x1:
+                raise ValueError("Review Delta export contains encrypted content.")
             if info.file_size > MAX_DELTA_MEMBER_BYTES:
                 raise ValueError(f"Review Delta export member exceeds the 25 MB verification limit: {info.filename}")
             total_uncompressed += info.file_size
@@ -449,7 +456,7 @@ def verify_review_delta_export(data: bytes) -> dict[str, Any]:
     changed_findings = [item for item in comparison["finding_changes"] if item.get("change_type") != "UNCHANGED"][:100]
     changed_references = [item for item in comparison["reference_changes"] if item.get("change_type") != "UNCHANGED"][:100]
     changed_metadata = [item for item in comparison["reference_metadata_changes"] if item.get("change_type") != "UNCHANGED"][:20]
-    return {
+    result = {
         "valid": True,
         "export_format": DELTA_EXPORT_FORMAT,
         "export_version": DELTA_EXPORT_VERSION,
@@ -472,3 +479,6 @@ def verify_review_delta_export(data: bytes) -> dict[str, Any]:
         "readiness_inferred": False,
         "heavybid_import_validated": False,
     }
+    if include_canonical:
+        result["canonical_comparison"] = comparison
+    return result
