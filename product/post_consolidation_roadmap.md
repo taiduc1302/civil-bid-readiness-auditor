@@ -12,8 +12,9 @@ The current product is a local-first deterministic **review** system, not a bid-
 6. Review Delta comparison, deterministic portable Delta export, and independent Delta-export verification;
 7. neutral Review Timeline reconstruction from 2–10 independently verified Delta bundles using exact review-package SHA-256 continuity only, with bounded changed-evidence detail disclosure from verifier-approved previews;
 8. safe read-only cross-navigation among Review Delta, Delta verification, and Review Timeline that carries no uploads or verification/lineage state between routes;
-9. deterministic in-memory Review Timeline evidence-export builder plus independent verifier core, with no browser export/import surface or persistence; and
-10. controlled output eligibility planning and pre-write hash revalidation, without a HeavyBid candidate writer.
+9. deterministic in-memory Review Timeline evidence-export builder plus independent verifier core;
+10. request-local browser distribution of a Timeline export from freshly re-selected Delta ZIPs, with generated-output verification before download and no Timeline-export ingestion/persistence surface; and
+11. controlled output eligibility planning and pre-write hash revalidation, without a HeavyBid candidate writer.
 
 All layers remain review aids. None certifies estimate correctness, bid readiness, reference authority, commercial approval, or production HeavyBid import safety.
 
@@ -34,7 +35,9 @@ Review Timeline is part of the public local runtime. It:
 - creates no review session and reruns no estimate/reference logic; and
 - uses a dedicated bounded multipart path compatible with the Delta verifier's 50 MB per-bundle limit rather than inheriting the legacy 26 MB request cap.
 
-A separate library-only `civil-estimate-review-timeline-export` v1 core now consumes only full evidence exposed after strict Delta verification, reconstructs the same SHA-256 chain, includes complete verified rows including `UNCHANGED`, writes deterministic JSON/CSV/ZIP evidence with integrity metadata, and independently regenerates/validates the bundle in memory. No browser route, download control, accepted Timeline-export upload surface, persistence, or cross-route state is part of this increment.
+The separate `civil-estimate-review-timeline-export` v1 core consumes only full evidence exposed after strict Delta verification, reconstructs the same SHA-256 chain, includes complete verified rows including `UNCHANGED`, writes deterministic JSON/CSV/ZIP evidence with integrity metadata, and independently regenerates/validates the bundle in memory.
+
+A dedicated `/export-review-timeline` browser surface now provides **request-local distribution only**. It requires 2–10 Delta v1 ZIPs to be selected again on that route, reuses the bounded Timeline multipart parser, invokes the strict export core (which independently verifies every Delta), then independently verifies the newly generated Timeline ZIP again before writing response bytes. It carries no upload, preview model, verified flag, package identity, or lineage state from `/review-timeline`; creates no review session or persistence; and does not accept Timeline-export ZIPs as browser input.
 
 It is evidence chronology only. It does not infer calendar dates, source currency, commercial revision identity, quality, improvement/regression, approval, bid readiness, or HeavyBid import validity. Session-only Operational Crew/Production evidence remains outside review-package v1, Delta-export v1, Review Timeline, and Timeline-export v1.
 
@@ -47,8 +50,9 @@ Preferred next increments stay read-only and work only from already verified evi
 1. **Delivered:** bounded per-transition evidence-detail disclosure from independently verified Delta preview rows, with explicit row/cell bounds and unchanged no-session/no-inference semantics;
 2. **Delivered:** safe cross-navigation among Review Delta verification and Review Timeline without persisting uploads, carrying verification/lineage state, or inventing chronology;
 3. **Delivered:** focused regression fixtures for a valid 10-transition chain and malformed/oversized aggregate requests without weakening per-bundle verifier limits;
-4. **Delivered at library core only:** `review_timeline_export_contract.md` is implemented by a deterministic in-memory builder plus independent verifier. Distribution remains intentionally deferred: there is no browser route, download control, accepted Timeline-export input, persistence, timestamp, generated narrative, or trend scoring.
-5. **Future guarded increment:** if a browser export surface is needed, add it only as explicit request-local generation from freshly re-selected Delta bundles, using the existing core verifier as a pre-distribution gate. Do not carry Timeline preview state or verified flags into export creation.
+4. **Delivered:** `review_timeline_export_contract.md` is implemented by a deterministic in-memory builder plus independent verifier;
+5. **Delivered:** request-local browser Timeline-export download from freshly re-selected Delta bundles, with the generated ZIP independently verified before distribution and no preview-state carryover;
+6. **Future guarded increment:** if direct browser verification of an already-created Timeline-export ZIP is useful, add a separate read-only single-bundle verifier route that calls only the existing independent verifier. Do not turn it into continuation/restoration/import, persistence, or authority for another route.
 
 ### P2 — portable operational evidence only under a new version contract
 
@@ -81,7 +85,7 @@ Only a real independently reviewed HeavyBid test import can change the import-va
 
 ## Explicitly deferred
 
-- browser distribution/import of Timeline export evidence until separately reviewed;
+- browser ingestion/continuation/restoration from Timeline export evidence;
 - direct HeavyBid database/API access;
 - automatic code replacement;
 - automatic BCY/LCY/CCY or ton/tonne conversion;
