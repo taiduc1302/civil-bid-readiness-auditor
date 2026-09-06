@@ -55,7 +55,7 @@ def _safe_csv(value: Any) -> str:
 
 def _write_csv(fields: list[str], rows: Iterable[dict[str, Any]]) -> bytes:
     output = io.StringIO(newline="")
-    writer = csv.DictWriter(output, fieldnames=fields)
+    writer = csv.DictWriter(output, fieldnames=fields, lineterminator="\r\n")
     writer.writeheader()
     for row in rows:
         writer.writerow({field: _safe_csv(row.get(field, "")) for field in fields})
@@ -172,7 +172,6 @@ def _readme_bytes() -> bytes:
 
 
 def delta_export_manifest(result: dict[str, Any]) -> dict[str, Any]:
-    """Return the small portable-export contract without duplicating full evidence rows."""
     return {
         "export_format": DELTA_EXPORT_FORMAT,
         "export_version": DELTA_EXPORT_VERSION,
@@ -315,7 +314,6 @@ def _write_member(book: zipfile.ZipFile, name: str, data: bytes) -> None:
 
 
 def build_review_delta_export(result: dict[str, Any]) -> tuple[bytes, str]:
-    """Create byte-deterministic portable Review Delta evidence from one comparison result."""
     _validate_comparison_result(result)
     members: dict[str, bytes] = {
         "manifest.json": _json_bytes(delta_export_manifest(result)),
@@ -359,8 +357,13 @@ def _read_json(book: zipfile.ZipFile, name: str) -> dict[str, Any]:
     return value
 
 
-def verify_review_delta_export(data: bytes) -> dict[str, Any]:
-    """Verify ZIP structure, hashes, and deterministic semantic agreement in memory."""
+def verify_review_delta_export(data: bytes, *, include_canonical: bool = False) -> dict[str, Any]:
+    """Verify ZIP structure, hashes, and semantics in memory.
+
+    ``include_canonical`` exposes the already-verified full comparison only to trusted
+    in-process callers such as the Timeline exporter. It does not skip or relax any
+    verification step and remains opt-in so browser previews stay bounded.
+    """
     payload = bytes(data)
     if not payload:
         raise ValueError("Review Delta export is blank.")
@@ -390,6 +393,8 @@ def verify_review_delta_export(data: bytes) -> dict[str, Any]:
 
         total_uncompressed = 0
         for info in infos:
+            if info.flag_bits & 0x1:
+                raise ValueError("Review Delta export contains encrypted content.")
             if info.file_size > MAX_DELTA_MEMBER_BYTES:
                 raise ValueError(f"Review Delta export member exceeds the 25 MB verification limit: {info.filename}")
             total_uncompressed += info.file_size
@@ -428,18 +433,13 @@ def verify_review_delta_export(data: bytes) -> dict[str, Any]:
         _validate_comparison_result(comparison)
         if manifest.get("export_format") != DELTA_EXPORT_FORMAT or manifest.get("export_version") != DELTA_EXPORT_VERSION:
             raise ValueError("Review Delta export manifest identity is unsupported.")
-        expected_manifest = delta_export_manifest(comparison)
-        if manifest != expected_manifest:
+        if manifest != delta_export_manifest(comparison):
             raise ValueError("Review Delta export manifest does not match the full comparison evidence.")
-
-        try:
-            expected_csvs = {
-                "finding_changes.csv": _finding_csv(comparison),
-                "reference_changes.csv": _reference_csv(comparison),
-                "reference_metadata_changes.csv": _metadata_csv(comparison),
-            }
-        except (AttributeError, TypeError, ValueError) as exc:
-            raise ValueError("Review Delta export contains malformed comparison evidence.") from exc
+        expected_csvs = {
+            "finding_changes.csv": _finding_csv(comparison),
+            "reference_changes.csv": _reference_csv(comparison),
+            "reference_metadata_changes.csv": _metadata_csv(comparison),
+        }
         for name, expected_bytes in expected_csvs.items():
             if _read_member(book, name) != expected_bytes:
                 raise ValueError(f"Review Delta export {name} does not match the full comparison evidence.")
@@ -449,7 +449,7 @@ def verify_review_delta_export(data: bytes) -> dict[str, Any]:
     changed_findings = [item for item in comparison["finding_changes"] if item.get("change_type") != "UNCHANGED"][:100]
     changed_references = [item for item in comparison["reference_changes"] if item.get("change_type") != "UNCHANGED"][:100]
     changed_metadata = [item for item in comparison["reference_metadata_changes"] if item.get("change_type") != "UNCHANGED"][:20]
-    return {
+    result = {
         "valid": True,
         "export_format": DELTA_EXPORT_FORMAT,
         "export_version": DELTA_EXPORT_VERSION,
@@ -472,3 +472,6 @@ def verify_review_delta_export(data: bytes) -> dict[str, Any]:
         "readiness_inferred": False,
         "heavybid_import_validated": False,
     }
+    if include_canonical:
+        result["canonical_comparison"] = comparison
+    return result
