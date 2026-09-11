@@ -5,9 +5,14 @@ gate passes. It still does not create a workbook or claim HeavyBid import validi
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+from copy import deepcopy
 from pathlib import PurePath
 from typing import Any
+
+from output_gate import validate_output_manifest
 
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -22,6 +27,18 @@ def _norm_path(value: str) -> str:
     return value.replace("\\", "/").strip().casefold()
 
 
+def _canonical_digest(value: dict[str, Any]) -> str:
+    payload = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def artifact_plan_digest(plan: dict[str, Any]) -> str:
+    """Return the deterministic digest over a plan excluding its digest field."""
+    body = deepcopy(plan)
+    body.pop("artifact_plan_sha256", None)
+    return _canonical_digest(body)
+
+
 def plan_versioned_test_artifact(
     gate_manifest: dict[str, Any],
     baseline_path: str,
@@ -31,6 +48,13 @@ def plan_versioned_test_artifact(
 ) -> dict[str, Any]:
     """Return a deterministic candidate-writer plan; never writes or overwrites files."""
     blockers: list[str] = []
+
+    gate_valid = True
+    try:
+        validate_output_manifest(gate_manifest)
+    except (TypeError, ValueError) as exc:
+        gate_valid = False
+        blockers.append(f"output gate manifest validation failed: {exc}")
 
     if gate_manifest.get("eligible_for_controlled_test_artifact_preparation") is not True:
         blockers.append("output eligibility gate has not passed")
@@ -59,6 +83,9 @@ def plan_versioned_test_artifact(
     elif output and version.casefold() not in PurePath(output).stem.casefold():
         blockers.append("output_path filename must contain output_version")
 
+    if not isinstance(schema_authority, dict):
+        schema_authority = {}
+        blockers.append("schema authority is malformed")
     schema_filename = _text(schema_authority.get("filename"))
     schema_revision = _text(schema_authority.get("revision"))
     schema_sha256 = _text(schema_authority.get("sha256"))
@@ -72,22 +99,26 @@ def plan_versioned_test_artifact(
     if schema_status != "APPROVED":
         blockers.append("schema authority must be APPROVED")
 
+    source_register = gate_manifest.get("source_register", [])
+    if not isinstance(source_register, list):
+        source_register = []
     baseline_source = next(
         (
             item
-            for item in gate_manifest.get("source_register", [])
-            if item.get("role") == "baseline_activities_import"
+            for item in source_register
+            if isinstance(item, dict) and item.get("role") == "baseline_activities_import"
         ),
         None,
     )
     if baseline_source is None:
         blockers.append("gate manifest is missing baseline_activities_import source identity")
 
-    return {
+    plan = {
         "ready_for_candidate_writer": not blockers,
         "blockers": blockers,
         "write_mode": "CREATE_NEW_ONLY",
         "overwrite_allowed": False,
+        "gate_manifest_sha256": gate_manifest.get("gate_manifest_sha256", "") if gate_valid else "",
         "baseline_path": baseline,
         "baseline_source": baseline_source,
         "output_path": output,
@@ -106,3 +137,29 @@ def plan_versioned_test_artifact(
             "HEAVYBID_IMPORT_VALIDATED": False,
         },
     }
+    plan["artifact_plan_sha256"] = _canonical_digest(plan)
+    return plan
+
+
+def validate_artifact_plan(plan: dict[str, Any], gate_manifest: dict[str, Any]) -> dict[str, Any]:
+    """Fail closed unless the plan exactly reproduces from the bound gate manifest."""
+    validate_output_manifest(gate_manifest)
+    if not isinstance(plan, dict):
+        raise ValueError("artifact plan must be an object")
+    schema = plan.get("schema_authority")
+    if not isinstance(schema, dict):
+        raise ValueError("artifact plan schema authority is malformed")
+    expected = plan_versioned_test_artifact(
+        gate_manifest,
+        _text(plan.get("baseline_path")),
+        _text(plan.get("output_path")),
+        _text(plan.get("output_version")),
+        schema,
+    )
+    if plan != expected:
+        raise ValueError("artifact plan semantic state or digest does not match the bound gate manifest")
+    if plan.get("gate_manifest_sha256") != gate_manifest.get("gate_manifest_sha256"):
+        raise ValueError("artifact plan gate binding mismatch")
+    if plan.get("artifact_plan_sha256") != artifact_plan_digest(plan):
+        raise ValueError("artifact plan digest mismatch")
+    return plan
