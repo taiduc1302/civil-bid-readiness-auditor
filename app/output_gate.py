@@ -6,8 +6,11 @@ output-preparation step could even be considered.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections import Counter
+from copy import deepcopy
 from typing import Any, Iterable
 
 
@@ -31,6 +34,11 @@ _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 def _clean(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _canonical_digest(value: dict[str, Any]) -> str:
+    payload = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _validate_source_register(sources: Iterable[dict[str, Any]]) -> tuple[list[dict[str, str]], list[str]]:
@@ -120,6 +128,56 @@ def evaluate_output_eligibility(
     }
 
 
+def output_manifest_digest(manifest: dict[str, Any]) -> str:
+    """Return the deterministic digest over the manifest excluding its digest field."""
+    body = deepcopy(manifest)
+    body.pop("gate_manifest_sha256", None)
+    return _canonical_digest(body)
+
+
+def validate_output_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Fail closed unless a manifest is exactly reproducible from its governed evidence."""
+    if not isinstance(manifest, dict):
+        raise ValueError("output gate manifest must be an object")
+    if manifest.get("manifest_version") != "1":
+        raise ValueError("output gate manifest version is unsupported")
+    version = _clean(manifest.get("output_version"))
+    if not version:
+        raise ValueError("output gate manifest output_version is required")
+    if manifest.get("artifact_created") is not False:
+        raise ValueError("output gate manifest artifact_created must remain false")
+    if manifest.get("heavybid_import_attempted") is not False:
+        raise ValueError("output gate manifest heavybid_import_attempted must remain false")
+
+    sources = manifest.get("source_register")
+    approvals = manifest.get("approvals")
+    exceptions = manifest.get("exceptions")
+    if not isinstance(sources, list) or not all(isinstance(item, dict) for item in sources):
+        raise ValueError("output gate manifest source_register is malformed")
+    if not isinstance(approvals, dict):
+        raise ValueError("output gate manifest approvals are malformed")
+    if not isinstance(exceptions, list) or not all(isinstance(item, dict) for item in exceptions):
+        raise ValueError("output gate manifest exceptions are malformed")
+
+    rebuilt = {
+        "manifest_version": "1",
+        "output_version": version,
+        **evaluate_output_eligibility(sources, approvals, exceptions),
+        "artifact_created": False,
+        "heavybid_import_attempted": False,
+    }
+    observed_without_digest = deepcopy(manifest)
+    observed_digest = observed_without_digest.pop("gate_manifest_sha256", None)
+    if observed_without_digest != rebuilt:
+        raise ValueError("output gate manifest semantic state does not match governed evidence")
+    if not isinstance(observed_digest, str) or not _SHA256_RE.fullmatch(observed_digest):
+        raise ValueError("output gate manifest digest is missing or invalid")
+    expected_digest = _canonical_digest(rebuilt)
+    if observed_digest.lower() != expected_digest:
+        raise ValueError("output gate manifest digest mismatch")
+    return manifest
+
+
 def build_output_manifest(
     source_register: Iterable[dict[str, Any]],
     approvals: dict[str, Any],
@@ -131,10 +189,12 @@ def build_output_manifest(
     if not version:
         raise ValueError("output_version is required")
     result = evaluate_output_eligibility(source_register, approvals, exceptions)
-    return {
+    manifest = {
         "manifest_version": "1",
         "output_version": version,
         **result,
         "artifact_created": False,
         "heavybid_import_attempted": False,
     }
+    manifest["gate_manifest_sha256"] = _canonical_digest(manifest)
+    return manifest
