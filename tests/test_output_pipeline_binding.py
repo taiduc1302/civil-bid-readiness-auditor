@@ -112,10 +112,12 @@ class OutputPipelineBindingTests(unittest.TestCase):
         self.assertEqual(artifact_plan["artifact_plan_sha256"], artifact_plan_digest(artifact_plan))
         self.assertIs(validate_artifact_plan(artifact_plan, gate_manifest), artifact_plan)
 
-    def test_mutated_plan_cannot_be_resealed_by_changing_only_digest(self):
+    def test_unsafe_plan_cannot_be_resealed_by_changing_ready_state_and_digest(self):
         gate_manifest = gate()
         forged = deepcopy(plan(gate_manifest))
-        forged["output_path"] = "controlled/Other_TEST-v2.xlsx"
+        forged["output_path"] = forged["baseline_path"]
+        forged["ready_for_candidate_writer"] = True
+        forged["blockers"] = []
         forged["artifact_plan_sha256"] = artifact_plan_digest(forged)
         with self.assertRaisesRegex(ValueError, "semantic state"):
             validate_artifact_plan(forged, gate_manifest)
