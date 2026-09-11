@@ -14,9 +14,15 @@ from contextlib import contextmanager
 import threading
 import time
 from typing import Any, Iterator, MutableMapping
+from weakref import WeakValueDictionary
 
 _REGISTRY_LOCK = threading.RLock()
-_SESSION_LOCKS: dict[str, threading.RLock] = {}
+# Weak values avoid retaining one lock forever for every historical token. Any
+# request holding or waiting on a lock keeps its own strong reference, so all
+# concurrent users of that token continue to share the same synchronization
+# object. Once no thread references an unused lock, the registry entry may be
+# collected safely without an explicit pop race.
+_SESSION_LOCKS: WeakValueDictionary[str, threading.RLock] = WeakValueDictionary()
 
 
 def _clock() -> float:
@@ -55,7 +61,13 @@ def register_session(
     session["last_access"] = stamp
     with _REGISTRY_LOCK:
         sessions[token] = session
-        _SESSION_LOCKS.setdefault(token, threading.RLock())
+        # Ensure a lock exists while this registration operation is active. It
+        # may later be garbage-collected if no request holds/waits on it; that
+        # is safe because no concurrent user can then still reference it.
+        lock = _SESSION_LOCKS.get(token)
+        if lock is None:
+            lock = threading.RLock()
+            _SESSION_LOCKS[token] = lock
     return session
 
 
@@ -121,6 +133,12 @@ def expire_sessions(
         finally:
             lock.release()
     return expired
+
+
+def session_lock_registry_size() -> int:
+    """Return current live lock count for tests/diagnostics only."""
+    with _REGISTRY_LOCK:
+        return len(_SESSION_LOCKS)
 
 
 def clear_session_locks() -> None:
