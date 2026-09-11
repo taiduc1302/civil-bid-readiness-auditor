@@ -41,6 +41,8 @@ class ArtifactPlanTests(unittest.TestCase):
         self.assertTrue(result["ready_for_candidate_writer"])
         self.assertEqual(result["write_mode"], "CREATE_NEW_ONLY")
         self.assertFalse(result["overwrite_allowed"])
+        self.assertTrue(result["filesystem_identity_recheck_required"])
+        self.assertTrue(result["exclusive_create_required"])
         self.assertFalse(result["artifact_created"])
         self.assertFalse(result["heavybid_import_attempted"])
         self.assertFalse(result["control_flags"]["HEAVYBID_IMPORT_VALIDATED"])
@@ -51,6 +53,29 @@ class ArtifactPlanTests(unittest.TestCase):
             "Controlled/Activities.xlsx",
             "controlled\\activities.xlsx",
             "v1",
+            schema_authority(),
+        )
+        self.assertFalse(result["ready_for_candidate_writer"])
+        self.assertIn("output_path must not overwrite baseline_path", result["blockers"])
+
+    def test_dot_segments_and_mixed_slashes_cannot_alias_baseline(self):
+        result = plan_versioned_test_artifact(
+            gate_manifest(),
+            r"C:\Estimate\controlled\Activities-v2.xlsx",
+            "c:/estimate/temp/../controlled/./ACTIVITIES-v2.xlsx",
+            "v2",
+            schema_authority(),
+        )
+        self.assertFalse(result["ready_for_candidate_writer"])
+        self.assertIn("output_path must not overwrite baseline_path", result["blockers"])
+        self.assertEqual(result["baseline_path_lexical_identity"], result["output_path_lexical_identity"])
+
+    def test_relative_dot_segment_alias_is_blocked_without_filesystem_access(self):
+        result = plan_versioned_test_artifact(
+            gate_manifest(),
+            "controlled/base-v2.xlsx",
+            "controlled/work/../base-v2.xlsx",
+            "v2",
             schema_authority(),
         )
         self.assertFalse(result["ready_for_candidate_writer"])
