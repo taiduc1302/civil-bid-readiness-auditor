@@ -1,3 +1,4 @@
+import gc
 import sys
 import threading
 import unittest
@@ -5,7 +6,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 
-from session_state import clear_session_locks, expire_sessions, register_session, session_scope
+from session_state import (
+    _lock_for,
+    clear_session_locks,
+    expire_sessions,
+    register_session,
+    session_lock_registry_size,
+    session_scope,
+)
 
 
 class SessionStateTests(unittest.TestCase):
@@ -117,6 +125,45 @@ class SessionStateTests(unittest.TestCase):
         self.assertIn("token", self.sessions)
         release.set()
         thread.join(1.0)
+
+    def test_unused_lock_registry_entries_are_collectable(self):
+        lock = _lock_for("historical-token")
+        self.assertEqual(session_lock_registry_size(), 1)
+        del lock
+        gc.collect()
+        self.assertEqual(session_lock_registry_size(), 0)
+
+    def test_waiter_keeps_same_lock_alive_until_it_finishes(self):
+        lock = _lock_for("token")
+        entered = threading.Event()
+        acquired = threading.Event()
+        finished = threading.Event()
+
+        lock.acquire()
+
+        def waiter():
+            waiter_lock = _lock_for("token")
+            entered.set()
+            with waiter_lock:
+                acquired.set()
+            finished.set()
+
+        thread = threading.Thread(target=waiter)
+        thread.start()
+        self.assertTrue(entered.wait(1.0))
+        gc.collect()
+        self.assertEqual(session_lock_registry_size(), 1)
+        same_lock = _lock_for("token")
+        self.assertIs(same_lock, lock)
+        del same_lock
+        self.assertFalse(acquired.wait(0.05))
+        lock.release()
+        self.assertTrue(acquired.wait(1.0))
+        self.assertTrue(finished.wait(1.0))
+        thread.join(1.0)
+        del lock
+        gc.collect()
+        self.assertEqual(session_lock_registry_size(), 0)
 
 
 if __name__ == "__main__":
