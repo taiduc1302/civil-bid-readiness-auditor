@@ -9,6 +9,9 @@ import hashlib
 from collections import Counter
 from typing import Any
 
+from artifact_plan import validate_artifact_plan
+from output_gate import validate_output_manifest
+
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -24,6 +27,16 @@ def verify_prewrite_inputs(
     blockers: list[str] = []
     checks: list[dict[str, str]] = []
 
+    try:
+        validate_output_manifest(gate_manifest)
+    except (TypeError, ValueError) as exc:
+        blockers.append(f"output gate manifest validation failed at pre-write: {exc}")
+
+    try:
+        validate_artifact_plan(artifact_plan, gate_manifest)
+    except (TypeError, ValueError) as exc:
+        blockers.append(f"artifact plan validation failed at pre-write: {exc}")
+
     if artifact_plan.get("ready_for_candidate_writer") is not True:
         blockers.append("artifact plan is not ready for candidate writer")
 
@@ -35,13 +48,23 @@ def verify_prewrite_inputs(
     if flags.get("HEAVYBID_IMPORT_VALIDATED") is not False:
         blockers.append("HEAVYBID_IMPORT_VALIDATED must remain false")
 
-    sources = list(gate_manifest.get("source_register", []))
-    role_counts = Counter(str(source.get("role", "")).strip() for source in sources if str(source.get("role", "")).strip())
+    sources = gate_manifest.get("source_register", [])
+    if not isinstance(sources, list):
+        sources = []
+        blockers.append("gate manifest source_register is malformed at pre-write")
+    role_counts = Counter(
+        str(source.get("role", "")).strip()
+        for source in sources
+        if isinstance(source, dict) and str(source.get("role", "")).strip()
+    )
     for role, count in sorted(role_counts.items()):
         if count > 1:
             blockers.append(f"ambiguous duplicate source role at pre-write: {role}")
 
     for source in sources:
+        if not isinstance(source, dict):
+            blockers.append("source register entry is malformed at pre-write")
+            continue
         role = str(source.get("role", "")).strip()
         expected = str(source.get("sha256", "")).strip().lower()
         filename = str(source.get("filename", "")).strip()
@@ -60,7 +83,10 @@ def verify_prewrite_inputs(
             blockers.append(f"source changed since review: {role}")
 
     plan_baseline = artifact_plan.get("baseline_source") or {}
-    manifest_baseline = next((source for source in sources if source.get("role") == "baseline_activities_import"), None)
+    manifest_baseline = next(
+        (source for source in sources if isinstance(source, dict) and source.get("role") == "baseline_activities_import"),
+        None,
+    )
     if manifest_baseline is None:
         blockers.append("gate manifest is missing baseline_activities_import at pre-write")
     elif any(
