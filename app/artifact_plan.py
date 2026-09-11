@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ntpath
 import re
 from copy import deepcopy
-from pathlib import PurePath
+from pathlib import PureWindowsPath
 from typing import Any
 
 from output_gate import validate_output_manifest
@@ -24,7 +25,9 @@ def _text(value: Any) -> str:
 
 
 def _norm_path(value: str) -> str:
-    return value.replace("\\", "/").strip().casefold()
+    """Return deterministic lexical Windows-path identity without touching disk."""
+    text = value.strip().replace("/", "\\")
+    return ntpath.normcase(ntpath.normpath(text))
 
 
 def _canonical_digest(value: dict[str, Any]) -> str:
@@ -76,11 +79,12 @@ def plan_versioned_test_artifact(
         blockers.append("output_path is required")
     if baseline and output and _norm_path(baseline) == _norm_path(output):
         blockers.append("output_path must not overwrite baseline_path")
-    if output and PurePath(output).suffix.casefold() != ".xlsx":
+    output_name = PureWindowsPath(output)
+    if output and output_name.suffix.casefold() != ".xlsx":
         blockers.append("candidate output_path must use .xlsx")
     if not version or not _VERSION_RE.fullmatch(version):
         blockers.append("output_version must use only letters, numbers, dot, underscore, or hyphen")
-    elif output and version.casefold() not in PurePath(output).stem.casefold():
+    elif output and version.casefold() not in output_name.stem.casefold():
         blockers.append("output_path filename must contain output_version")
 
     if not isinstance(schema_authority, dict):
@@ -118,10 +122,14 @@ def plan_versioned_test_artifact(
         "blockers": blockers,
         "write_mode": "CREATE_NEW_ONLY",
         "overwrite_allowed": False,
+        "filesystem_identity_recheck_required": True,
+        "exclusive_create_required": True,
         "gate_manifest_sha256": gate_manifest.get("gate_manifest_sha256", "") if gate_valid else "",
         "baseline_path": baseline,
+        "baseline_path_lexical_identity": _norm_path(baseline) if baseline else "",
         "baseline_source": baseline_source,
         "output_path": output,
+        "output_path_lexical_identity": _norm_path(output) if output else "",
         "output_version": version,
         "schema_authority": {
             "filename": schema_filename,
@@ -162,4 +170,8 @@ def validate_artifact_plan(plan: dict[str, Any], gate_manifest: dict[str, Any]) 
         raise ValueError("artifact plan gate binding mismatch")
     if plan.get("artifact_plan_sha256") != artifact_plan_digest(plan):
         raise ValueError("artifact plan digest mismatch")
+    if plan.get("filesystem_identity_recheck_required") is not True:
+        raise ValueError("future writer filesystem identity recheck must remain required")
+    if plan.get("exclusive_create_required") is not True:
+        raise ValueError("future writer exclusive-create control must remain required")
     return plan
