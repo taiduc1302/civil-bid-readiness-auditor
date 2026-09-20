@@ -16,6 +16,7 @@ from review_delta import compare_review_packages
 from review_delta_export import build_review_delta_export
 from review_package import build_review_package
 from review_timeline_export import verify_review_timeline_export
+from review_timeline_ui import _TIMELINE_HEAVY_ADMISSION
 from server import Handler, SESSIONS, ThreadingHTTPServer
 
 
@@ -116,6 +117,20 @@ class ReviewTimelineExportUiTests(unittest.TestCase):
         self.assertEqual(verified["snapshot_count"], 3)
         self.assertEqual(verified["transition_count"], 2)
         self.assertFalse(verified["heavybid_import_validated"])
+        self.assertEqual(SESSIONS, {})
+
+    def test_busy_timeline_export_returns_503_before_parsing_upload(self):
+        self.assertTrue(_TIMELINE_HEAVY_ADMISSION.acquire(blocking=False))
+        try:
+            body, headers = self.multipart([("not-a-real-delta.zip", b"not-a-valid-zip")])
+            status, response_headers, page = self.request(
+                "POST", "/export-review-timeline", body, headers
+            )
+        finally:
+            _TIMELINE_HEAVY_ADMISSION.release()
+        self.assertEqual(status, 503)
+        self.assertIn("text/html", response_headers["Content-Type"])
+        self.assertIn(b"Another Review Timeline operation is already running", page)
         self.assertEqual(SESSIONS, {})
 
     def test_invalid_or_insufficient_inputs_fail_html_without_session(self):
