@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import html
+import threading
+from contextlib import contextmanager
 from email import policy
 from email.parser import BytesParser
 from http import HTTPStatus
@@ -18,6 +20,39 @@ TIMELINE_MAX_REQUEST_BYTES = (
     MAX_TIMELINE_DELTAS * MAX_DELTA_EXPORT_BYTES + TIMELINE_MULTIPART_OVERHEAD_BYTES
 )
 MAX_TIMELINE_DETAIL_CELL_CHARS = 500
+TIMELINE_MAX_CONCURRENT_HEAVY_REQUESTS = 1
+TIMELINE_REQUEST_SOCKET_TIMEOUT_SECONDS = 30
+_TIMELINE_HEAVY_ADMISSION = threading.BoundedSemaphore(TIMELINE_MAX_CONCURRENT_HEAVY_REQUESTS)
+
+
+class TimelineBusyError(_server.InputError):
+    pass
+
+
+@contextmanager
+def _timeline_request_guard(handler: Any):
+    """Fail fast on overlapping heavy Timeline work and bound socket I/O waits."""
+    if not _TIMELINE_HEAVY_ADMISSION.acquire(blocking=False):
+        raise TimelineBusyError(
+            "Another Review Timeline operation is already running. Try again after it finishes."
+        )
+    connection = getattr(handler, "connection", None)
+    previous_timeout = None
+    timeout_changed = False
+    try:
+        if connection is not None and hasattr(connection, "gettimeout") and hasattr(connection, "settimeout"):
+            previous_timeout = connection.gettimeout()
+            connection.settimeout(TIMELINE_REQUEST_SOCKET_TIMEOUT_SECONDS)
+            timeout_changed = True
+        yield
+    finally:
+        if timeout_changed:
+            try:
+                connection.settimeout(previous_timeout)
+            except OSError:
+                pass
+        _TIMELINE_HEAVY_ADMISSION.release()
+
 
 
 def _timeline_multipart_message(handler: Any):
@@ -298,10 +333,16 @@ def install_review_timeline_ui() -> None:
             original_post(self)
             return
         try:
-            message = _timeline_multipart_message(self)
-            uploads = _read_delta_exports(message)
-            result = build_review_timeline(uploads)
+            with _timeline_request_guard(self):
+                message = _timeline_multipart_message(self)
+                uploads = _read_delta_exports(message)
+                result = build_review_timeline(uploads)
             self.send_html(_server.page("Review Timeline", timeline_page_body(result=result)))
+        except TimelineBusyError as exc:
+            self.send_html(
+                _server.page("Review Timeline", timeline_page_body(error=str(exc))),
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
         except (_server.InputError, ValueError) as exc:
             self.send_html(_server.page("Review Timeline", timeline_page_body(error=str(exc))), HTTPStatus.BAD_REQUEST)
 
