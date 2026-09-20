@@ -276,8 +276,70 @@ def findings_page(token: str, session: dict, message: str = "", filters: dict[st
 _server.findings_page = findings_page
 
 
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _loopback_authority(value: str) -> bool:
+    """Return True only for a syntactically valid loopback HTTP authority."""
+    value = (value or "").strip()
+    if not value or any(character.isspace() for character in value):
+        return False
+    try:
+        parsed = urlparse(f"//{value}")
+        _ = parsed.port
+    except ValueError:
+        return False
+    if parsed.username is not None or parsed.password is not None or not parsed.hostname:
+        return False
+    return parsed.hostname.casefold().rstrip(".") in _LOOPBACK_HOSTS
+
+
+def _loopback_origin(value: str) -> bool:
+    """Accept only explicit HTTP(S) origins whose host is loopback."""
+    value = (value or "").strip()
+    if not value:
+        return True
+    try:
+        parsed = urlparse(value)
+        _ = parsed.port
+    except ValueError:
+        return False
+    if parsed.scheme.casefold() not in {"http", "https"}:
+        return False
+    if parsed.username is not None or parsed.password is not None or not parsed.hostname:
+        return False
+    return parsed.hostname.casefold().rstrip(".") in _LOOPBACK_HOSTS
+
+
+def _request_metadata_is_local(headers) -> bool:
+    """Reject DNS-rebinding/cross-site browser requests before route handling."""
+    if not _loopback_authority(headers.get("Host", "")):
+        return False
+    fetch_site = (headers.get("Sec-Fetch-Site", "") or "").strip().casefold()
+    if fetch_site == "cross-site":
+        return False
+    origin = headers.get("Origin")
+    if origin is not None and not _loopback_origin(origin):
+        return False
+    return True
+
+
 class Handler(_server.Handler):
+    def _reject_nonlocal_request(self) -> bool:
+        if _request_metadata_is_local(self.headers):
+            return False
+        self.send_html(
+            _server.page(
+                "Local request rejected",
+                "<div class='error'>This local-only auditor accepts requests only from loopback browser origins.</div>",
+            ),
+            HTTPStatus.FORBIDDEN,
+        )
+        return True
+
     def do_GET(self) -> None:
+        if self._reject_nonlocal_request():
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/guide":
             self.send_html(guide_page())
@@ -358,6 +420,8 @@ class Handler(_server.Handler):
         super().do_GET()
 
     def do_POST(self) -> None:
+        if self._reject_nonlocal_request():
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/sample-structured":
             filename, data = structured_estimate()
