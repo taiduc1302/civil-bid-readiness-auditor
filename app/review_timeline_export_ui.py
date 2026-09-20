@@ -9,7 +9,13 @@ import server_legacy as _server
 from review_delta_export import MAX_DELTA_EXPORT_BYTES
 from review_timeline import MAX_TIMELINE_DELTAS, MIN_TIMELINE_DELTAS
 from review_timeline_export import build_review_timeline_export, verify_review_timeline_export
-from review_timeline_ui import TIMELINE_MAX_REQUEST_BYTES, _read_delta_exports, _timeline_multipart_message
+from review_timeline_ui import (
+    TIMELINE_MAX_REQUEST_BYTES,
+    TimelineBusyError,
+    _read_delta_exports,
+    _timeline_multipart_message,
+    _timeline_request_guard,
+)
 
 EXPORT_ROUTE = "/export-review-timeline"
 
@@ -62,18 +68,24 @@ def install_review_timeline_export_ui() -> None:
             original_post(self)
             return
         try:
-            message = _timeline_multipart_message(self)
-            uploads = _read_delta_exports(message)
-            content, filename = build_review_timeline_export(uploads)
-            verified = verify_review_timeline_export(content)
-            if verified.get("valid") is not True or verified.get("heavybid_import_validated") is not False:
-                raise ValueError("Generated Review Timeline export failed the distribution safety gate.")
+            with _timeline_request_guard(self):
+                message = _timeline_multipart_message(self)
+                uploads = _read_delta_exports(message)
+                content, filename = build_review_timeline_export(uploads)
+                verified = verify_review_timeline_export(content)
+                if verified.get("valid") is not True or verified.get("heavybid_import_validated") is not False:
+                    raise ValueError("Generated Review Timeline export failed the distribution safety gate.")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
             self.wfile.write(content)
+        except TimelineBusyError as exc:
+            self.send_html(
+                _server.page("Review Timeline export", timeline_export_page_body(error=str(exc))),
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
         except (_server.InputError, ValueError) as exc:
             self.send_html(
                 _server.page("Review Timeline export", timeline_export_page_body(error=str(exc))),

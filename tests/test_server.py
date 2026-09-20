@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 
-from server import Handler, SESSIONS, ThreadingHTTPServer
+from server import Handler, SESSIONS, ThreadingHTTPServer, _loopback_authority, _loopback_origin
 
 
 class ServerTests(unittest.TestCase):
@@ -75,6 +75,66 @@ class ServerTests(unittest.TestCase):
         status, _, body = self.request("POST", "/prepare", payload, {"Content-Type": "text/plain", "Content-Length": str(len(payload))})
         self.assertEqual(status, 400)
         self.assertIn(b"multipart form data", body)
+
+    def test_loopback_authority_and_origin_validation(self):
+        self.assertTrue(_loopback_authority("localhost"))
+        self.assertTrue(_loopback_authority("127.0.0.1:8000"))
+        self.assertTrue(_loopback_authority("[::1]:8000"))
+        self.assertTrue(_loopback_origin("http://localhost:8000"))
+        self.assertTrue(_loopback_origin("https://127.0.0.1:8443"))
+        self.assertFalse(_loopback_authority("127.0.0.1.evil.example"))
+        self.assertFalse(_loopback_authority("example.com"))
+        self.assertFalse(_loopback_origin("https://example.com"))
+        self.assertFalse(_loopback_origin("null"))
+
+    def test_foreign_host_is_rejected_before_state_mutation(self):
+        before = set(SESSIONS)
+        status, _, body = self.request(
+            "POST",
+            "/sample",
+            b"",
+            {"Host": "example.com", "Content-Length": "0"},
+        )
+        self.assertEqual(status, 403)
+        self.assertIn(b"local-only auditor", body)
+        self.assertEqual(set(SESSIONS), before)
+
+    def test_cross_site_browser_metadata_is_rejected(self):
+        local_host = f"127.0.0.1:{self.port}"
+        status, _, _ = self.request(
+            "GET",
+            "/",
+            headers={
+                "Host": local_host,
+                "Origin": "https://example.com",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        self.assertEqual(status, 403)
+
+        status, _, _ = self.request(
+            "GET",
+            "/",
+            headers={
+                "Host": local_host,
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        self.assertEqual(status, 403)
+
+    def test_ordinary_loopback_browser_metadata_is_allowed(self):
+        local_host = f"localhost:{self.port}"
+        status, _, body = self.request(
+            "GET",
+            "/",
+            headers={
+                "Host": local_host,
+                "Origin": f"http://localhost:{self.port}",
+                "Sec-Fetch-Site": "same-origin",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertIn(b"Local, deterministic", body)
 
     def test_cover_sheet_can_be_excluded(self):
         token = "cover-sheet-test"
