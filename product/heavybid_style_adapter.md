@@ -39,7 +39,7 @@ The adapter does not:
 - modify HeavyBid
 - certify that a workbook can be imported into HeavyBid
 - invent Bid Item, Activity, Resource, Crew, Production, Rate, or Quantity values
-- validate Tybo/company codebooks
+- validate company codebooks
 - convert BCY/LCY/CCY
 - convert US tons and metric tonnes
 - infer crew composition or production rates

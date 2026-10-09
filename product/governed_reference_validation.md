@@ -24,7 +24,7 @@ This layer checks exported Activity and Resource codes against an explicitly sup
 
 ## Public repository boundary
 
-The bundled CSV files under `samples/` are fictional test references only. They are not Tybo, HCSS, supplier, client, or project codebooks and must not be treated as production authorities.
+The bundled CSV files under `samples/` are fictional test references only. They are not employer, HCSS, supplier, client, or project codebooks and must not be treated as production authorities.
 
 A future private/company workflow may load an approved project-specific Activity/Material/Resource reference, but that governed source must remain separate from the public synthetic fixtures.
 
